@@ -393,6 +393,10 @@ func (a *analyzer) expr(expr ast.Expr) bool {
 		}
 		for i, arg := range expr.Args {
 			if a.isObj(arg) {
+				if i == len(expr.Args)-1 && expr.Ellipsis != token.NoPos {
+					// This is "obj..." using our object, requiring it to be a slice.
+					return false
+				}
 				tv, ok := a.pkg.TypesInfo.Types[expr.Fun]
 				if !ok {
 					panic(errf("no type info for function in call expression at %s", a.pos(expr)))
@@ -623,7 +627,7 @@ func (a *analyzer) expr(expr ast.Expr) bool {
 			}
 			return false
 		}
-		return true
+		return a.expr(expr.X)
 
 	case *ast.SliceExpr:
 		if a.isObj(expr.X) {
