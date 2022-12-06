@@ -16,11 +16,9 @@ import (
 // Load loads the Go modules in and below dir.
 // It analyzes the functions in them,
 // looking for parameters with concrete types that could be interfaces instead.
-// The result is a map of maps of sets.
-// The keys in the first map are the positions of function declarations.
-// The keys in the second map are the names of function parameters eligible for conversion to interface types.
-// The members of the set are the names of methods on the parameter that are invoked or referenced.
-func Load(ctx context.Context, dir string) (result map[token.Position]map[string]set.Of[string], err error) {
+// The result is a list of Tuples,
+// one for each function analyzed that has eligible parameters.
+func Load(ctx context.Context, dir string) (result []Tuple, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if d, ok := r.(derr); ok {
@@ -50,8 +48,6 @@ func Load(ctx context.Context, dir string) (result map[token.Position]map[string
 		return nil, errors.Wrapf(err, "after loading packages from %s", dir)
 	}
 
-	result = make(map[token.Position]map[string]set.Of[string])
-
 	for _, pkg := range pkgs {
 		for _, file := range pkg.Syntax {
 			for _, decl := range file.Decls {
@@ -66,12 +62,22 @@ func Load(ctx context.Context, dir string) (result map[token.Position]map[string
 				if len(m) == 0 {
 					continue
 				}
-				result[pkg.Fset.Position(fndecl.Name.Pos())] = m
+				result = append(result, Tuple{
+					F: fndecl,
+					P: pkg.Fset.Position(fndecl.Name.Pos()),
+					M: m,
+				})
 			}
 		}
 	}
 
 	return result, nil
+}
+
+type Tuple struct {
+	F *ast.FuncDecl
+	P token.Position
+	M map[string]set.Of[string]
 }
 
 func analyzeFnDecl(fndecl *ast.FuncDecl, pkg *packages.Package) (map[string]set.Of[string], error) {
@@ -262,6 +268,9 @@ func (a *analyzer) stmt(stmt ast.Stmt) bool {
 		}
 		return a.expr(stmt.X)
 
+	case *ast.LabeledStmt:
+		return a.stmt(stmt.Stmt)
+
 	case *ast.RangeStmt:
 		// As with AssignStmt,
 		// if our object appears on the lhs we don't care.
@@ -390,6 +399,10 @@ func (a *analyzer) expr(expr ast.Expr) bool {
 				}
 				sig := getSig(tv.Type)
 				if sig == nil {
+					// This could be a type conversion expression; e.g. int(x).
+					if len(expr.Args) == 1 {
+						return false
+					}
 					panic(errf("got %T, want *types.Signature for type of function in call expression at %s", tv.Type, a.pos(expr)))
 				}
 				var (
