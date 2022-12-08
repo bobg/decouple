@@ -84,6 +84,9 @@ func analyzeFnDecl(fndecl *ast.FuncDecl, pkg *packages.Package) (map[string]set.
 	result := make(map[string]set.Of[string])
 	for _, field := range fndecl.Type.Params.List {
 		for _, name := range field.Names {
+			if name.Name == "_" {
+				continue
+			}
 			obj, ok := pkg.TypesInfo.Defs[name]
 			if !ok {
 				return nil, fmt.Errorf("no def found for parameter %s of %s", name.Name, fndecl.Name.Name)
@@ -158,11 +161,9 @@ func (a *analyzer) stmt(stmt ast.Stmt) bool {
 			}
 		}
 		for i, rhs := range stmt.Rhs {
-			if a.isObj(rhs) {
-				switch stmt.Tok {
-				case token.ASSIGN, token.DEFINE:
-					// ok, do nothing
-				default:
+			// xxx do a recursive analysis of how this var is used!
+			if a.isObj(rhs) && stmt.Tok != token.DEFINE {
+				if stmt.Tok != token.ASSIGN {
 					// Reject OP=
 					return false
 				}
