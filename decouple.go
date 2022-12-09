@@ -101,6 +101,7 @@ func analyzeFnDecl(fndecl *ast.FuncDecl, pkg *packages.Package) (map[string]set.
 				obj:     obj,
 				pkg:     pkg,
 				methods: set.New[string](),
+				debug:   true, // xxx
 			}
 			for _, stmt := range fndecl.Body.List {
 				if !a.stmt(stmt) {
@@ -123,7 +124,11 @@ type analyzer struct {
 	pkg     *packages.Package
 	methods set.Of[string]
 
-	enclosingFuncType *ast.FuncType
+	enclosingFuncType   *ast.FuncType
+	enclosingSwitchStmt *ast.SwitchStmt
+
+	level int
+	debug bool
 }
 
 func (a *analyzer) isFunc(expr ast.Expr) bool {
@@ -145,7 +150,14 @@ func (a *analyzer) isObj(expr ast.Expr) bool {
 	}
 }
 
-func (a *analyzer) stmt(stmt ast.Stmt) bool {
+func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
+	a.debugf("> stmt %#v", stmt)
+	a.level++
+	defer func() {
+		a.level--
+		a.debugf("< stmt %#v %v", stmt, ok)
+	}()
+
 	if stmt == nil {
 		return true
 	}
@@ -197,7 +209,26 @@ func (a *analyzer) stmt(stmt ast.Stmt) bool {
 
 	case *ast.CaseClause:
 		for _, expr := range stmt.List {
-			// It's OK if expr is our object.
+			if a.isObj(expr) {
+				if a.enclosingSwitchStmt == nil {
+					panic(errf("case clause with no enclosing switch statement at %s", a.pos(stmt)))
+				}
+				if a.enclosingSwitchStmt.Tag == nil {
+					return false // would require our obj to evaluate as a boolean
+				}
+				tv, ok := a.pkg.TypesInfo.Types[a.enclosingSwitchStmt.Tag]
+				if !ok {
+					panic(errf("no type info for switch tag at %s", a.pos(a.enclosingSwitchStmt.Tag)))
+				}
+				t1, t2 := a.obj.Type(), tv.Type
+				if !types.AssignableTo(t1, t2) && !types.AssignableTo(t2, t1) {
+					// "In any comparison, the first operand must be assignable to the type of the second operand, or vice versa."
+					// https://go.dev/ref/spec#Comparison_operators
+					return false
+				}
+				continue
+			}
+
 			if !a.expr(expr) {
 				return false
 			}
@@ -337,14 +368,7 @@ func (a *analyzer) stmt(stmt ast.Stmt) bool {
 		return a.expr(stmt.Value)
 
 	case *ast.SwitchStmt:
-		if !a.stmt(stmt.Init) {
-			return false
-		}
-		// It's OK if stmt.Tag is our object.
-		if !a.expr(stmt.Tag) {
-			return false
-		}
-		return a.stmt(stmt.Body)
+		return a.switchStmt(stmt)
 
 	case *ast.TypeSwitchStmt:
 		if !a.stmt(stmt.Init) {
@@ -728,6 +752,23 @@ func (a *analyzer) funcLit(expr *ast.FuncLit) bool {
 	}()
 
 	return a.stmt(expr.Body)
+}
+
+func (a *analyzer) switchStmt(stmt *ast.SwitchStmt) bool {
+	outer := a.enclosingSwitchStmt
+	a.enclosingSwitchStmt = stmt
+	defer func() {
+		a.enclosingSwitchStmt = outer
+	}()
+
+	if !a.stmt(stmt.Init) {
+		return false
+	}
+	// It's OK if stmt.Tag is our object.
+	if !a.expr(stmt.Tag) {
+		return false
+	}
+	return a.stmt(stmt.Body)
 }
 
 func getIdent(expr ast.Expr) *ast.Ident {
