@@ -1,6 +1,7 @@
 package m
 
 import (
+	"context"
 	"io"
 	"os"
 )
@@ -94,4 +95,19 @@ func No15(f *os.File) ([]byte, error) {
 	default:
 		return nil, nil
 	}
+}
+
+func Yes16(ctx context.Context, ch chan<- io.Reader, f *os.File) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ch <- f:
+			// do nothing
+		}
+	}
+}
+
+func Yes17(f *os.File) []io.Reader {
+	return []io.Reader{f}
 }

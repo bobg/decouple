@@ -103,6 +103,7 @@ func analyzeFnDecl(fndecl *ast.FuncDecl, pkg *packages.Package) (map[string]set.
 				methods: set.New[string](),
 				debug:   true, // xxx
 			}
+			a.debugf("fn %s param %s", fndecl.Name.Name, name.Name)
 			for _, stmt := range fndecl.Body.List {
 				if !a.stmt(stmt) {
 					canBeInterface = false
@@ -151,11 +152,11 @@ func (a *analyzer) isObj(expr ast.Expr) bool {
 }
 
 func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
-	a.debugf("> stmt %#v", stmt)
 	a.level++
+	a.debugf("> stmt %#v", stmt)
 	defer func() {
-		a.level--
 		a.debugf("< stmt %#v %v", stmt, ok)
+		a.level--
 	}()
 
 	if stmt == nil {
@@ -392,7 +393,14 @@ func (a *analyzer) addMethods(intf *types.Interface) {
 	}
 }
 
-func (a *analyzer) expr(expr ast.Expr) bool {
+func (a *analyzer) expr(expr ast.Expr) (ok bool) {
+	a.level++
+	a.debugf("> expr %#v", expr)
+	defer func() {
+		a.debugf("< expr %#v %v", expr, ok)
+		a.level--
+	}()
+
 	if expr == nil {
 		return true
 	}

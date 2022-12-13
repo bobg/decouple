@@ -32,6 +32,8 @@ func TestLoad(t *testing.T) {
 		"Yes11": {"f": set.New[string]("Read")},
 		"Yes13": {"f": set.New[string]("Read")},
 		"Yes14": {"f": set.New[string]("Read")},
+		"Yes16": {"f": set.New[string]("Read")},
+		"Yes17": {"f": set.New[string]("Read")},
 	}
 
 	if !reflect.DeepEqual(got, want) {
