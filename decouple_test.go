@@ -11,7 +11,7 @@ import (
 
 func TestLoad(t *testing.T) {
 	ctx := context.Background()
-	res, err := Load(ctx, "_testdata")
+	res, err := Load(ctx, "_testdata", false)
 	if err != nil {
 		t.Fatal(err)
 	}

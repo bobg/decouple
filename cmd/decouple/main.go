@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"sort"
@@ -12,12 +13,22 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
+	var verbose bool
+	flag.BoolVar(&verbose, "v", false, "verbose")
+	flag.Parse()
+
+	var dir string
+	switch flag.NArg() {
+	case 0:
+		dir = "."
+	case 1:
+		dir = flag.Arg(0)
+	default:
 		fmt.Fprintf(os.Stderr, "Usage: %s DIR\n", os.Args[0])
 		os.Exit(1)
 	}
 
-	tuples, err := decouple.Load(context.Background(), os.Args[1])
+	tuples, err := decouple.Load(context.Background(), dir, verbose)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

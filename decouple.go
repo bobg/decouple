@@ -18,7 +18,7 @@ import (
 // looking for parameters with concrete types that could be interfaces instead.
 // The result is a list of Tuples,
 // one for each function analyzed that has eligible parameters.
-func Load(ctx context.Context, dir string) (result []Tuple, err error) {
+func Load(ctx context.Context, dir string, verbose bool) (result []Tuple, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if d, ok := r.(derr); ok {
@@ -55,7 +55,7 @@ func Load(ctx context.Context, dir string) (result []Tuple, err error) {
 				if !ok {
 					continue
 				}
-				m, err := analyzeFnDecl(fndecl, pkg)
+				m, err := analyzeFnDecl(fndecl, pkg, verbose)
 				if err != nil {
 					return nil, errors.Wrapf(err, "analyzing function %s at %s", fndecl.Name.Name, pkg.Fset.Position(fndecl.Name.Pos()))
 				}
@@ -80,7 +80,7 @@ type Tuple struct {
 	M map[string]set.Of[string]
 }
 
-func analyzeFnDecl(fndecl *ast.FuncDecl, pkg *packages.Package) (map[string]set.Of[string], error) {
+func analyzeFnDecl(fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (map[string]set.Of[string], error) {
 	result := make(map[string]set.Of[string])
 	for _, field := range fndecl.Type.Params.List {
 		for _, name := range field.Names {
@@ -101,7 +101,7 @@ func analyzeFnDecl(fndecl *ast.FuncDecl, pkg *packages.Package) (map[string]set.
 				obj:     obj,
 				pkg:     pkg,
 				methods: set.New[string](),
-				debug:   true, // xxx
+				debug:   verbose,
 			}
 			a.debugf("fn %s param %s", fndecl.Name.Name, name.Name)
 			for _, stmt := range fndecl.Body.List {
