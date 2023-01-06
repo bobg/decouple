@@ -18,7 +18,7 @@ import (
 // looking for parameters with concrete types that could be interfaces instead.
 // The result is a list of Tuples,
 // one for each function analyzed that has eligible parameters.
-func Load(ctx context.Context, dir string) (result []Tuple, err error) {
+func Load(ctx context.Context, dir string, debug bool) (result []Tuple, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if d, ok := r.(derr); ok {
@@ -55,7 +55,7 @@ func Load(ctx context.Context, dir string) (result []Tuple, err error) {
 				if !ok {
 					continue
 				}
-				m, err := analyzeFnDecl(fndecl, pkg)
+				m, err := analyzeFnDecl(fndecl, pkg, debug)
 				if err != nil {
 					return nil, errors.Wrapf(err, "analyzing function %s at %s", fndecl.Name.Name, pkg.Fset.Position(fndecl.Name.Pos()))
 				}
@@ -80,7 +80,7 @@ type Tuple struct {
 	M map[string]set.Of[string]
 }
 
-func analyzeFnDecl(fndecl *ast.FuncDecl, pkg *packages.Package) (map[string]set.Of[string], error) {
+func analyzeFnDecl(fndecl *ast.FuncDecl, pkg *packages.Package, debug bool) (map[string]set.Of[string], error) {
 	result := make(map[string]set.Of[string])
 	for _, field := range fndecl.Type.Params.List {
 		for _, name := range field.Names {
@@ -101,7 +101,7 @@ func analyzeFnDecl(fndecl *ast.FuncDecl, pkg *packages.Package) (map[string]set.
 				obj:     obj,
 				pkg:     pkg,
 				methods: set.New[string](),
-				debug:   true, // xxx
+				debug:   debug,
 			}
 			a.debugf("fn %s param %s", fndecl.Name.Name, name.Name)
 			for _, stmt := range fndecl.Body.List {
@@ -386,7 +386,12 @@ func (a *analyzer) pos(p interface{ Pos() token.Pos }) token.Position {
 	return a.pkg.Fset.Position(p.Pos())
 }
 
-func (a *analyzer) addMethods(intf *types.Interface) {
+type methoder interface {
+	NumMethods() int
+	Method(int) *types.Func
+}
+
+func (a *analyzer) addMethods(intf methoder) {
 	for i := 0; i < intf.NumMethods(); i++ {
 		m := intf.Method(i)
 		a.methods.Add(m.Name())
@@ -407,14 +412,34 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 
 	switch expr := expr.(type) {
 	case *ast.BinaryExpr:
-		if a.isObj(expr.X) || a.isObj(expr.Y) {
+		var other ast.Expr
+		if a.isObj(expr.X) {
+			other = expr.Y
+		} else if a.isObj(expr.Y) {
+			other = expr.X
+		}
+		if other != nil {
 			switch expr.Op {
 			case token.EQL, token.NEQ:
-				// ok, do nothing
+				if a.isObj(other) {
+					return true
+				}
+				tv, ok := a.pkg.TypesInfo.Types[other]
+				if !ok {
+					panic(errf("no type info for expr at %s", a.pos(other)))
+				}
+				intf := getInterface(tv.Type)
+				if intf == nil {
+					return false
+				}
+				a.addMethods(intf)
+				// Continue below.
+
 			default:
 				return false
 			}
 		}
+
 		return a.expr(expr.X) && a.expr(expr.Y)
 
 	case *ast.CallExpr:

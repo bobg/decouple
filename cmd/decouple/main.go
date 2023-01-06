@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"sort"
@@ -12,12 +13,15 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: %s DIR\n", os.Args[0])
+	debug := flag.Bool("debug", false, "turn on debugging output")
+	flag.Parse()
+
+	if flag.NArg() != 1 {
+		fmt.Fprintf(os.Stderr, "Usage: %s [-debug] DIR\n", os.Args[0])
 		os.Exit(1)
 	}
 
-	tuples, err := decouple.Load(context.Background(), os.Args[1])
+	tuples, err := decouple.Load(context.Background(), flag.Arg(0), *debug)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
