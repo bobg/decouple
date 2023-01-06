@@ -13,15 +13,22 @@ import (
 )
 
 func main() {
-	debug := flag.Bool("debug", false, "turn on debugging output")
+	var verbose bool
+	flag.BoolVar(&verbose, "v", false, "verbose")
 	flag.Parse()
 
-	if flag.NArg() != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: %s [-debug] DIR\n", os.Args[0])
+	var dir string
+	switch flag.NArg() {
+	case 0:
+		dir = "."
+	case 1:
+		dir = flag.Arg(0)
+	default:
+		fmt.Fprintf(os.Stderr, "Usage: %s [-v] [DIR]\n", os.Args[0])
 		os.Exit(1)
 	}
 
-	tuples, err := decouple.Load(context.Background(), flag.Arg(0), *debug)
+	tuples, err := decouple.Load(context.Background(), dir, verbose)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
