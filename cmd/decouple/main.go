@@ -28,7 +28,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	tuples, err := decouple.Load(context.Background(), dir, verbose)
+	tuples, err := decouple.AnalyzeDir(context.Background(), dir, verbose)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

@@ -6,88 +6,80 @@ import (
 	"os"
 )
 
-func Yes1(f *os.File, n int) ([]byte, error) {
+// In these tests,
+// a parameter named r can be an io.Reader,
+// and a parameter named rc can be an io.ReadCloser.
+// Other parameter names cannot be decoupled.
+
+func F1(r *os.File, n int) ([]byte, error) {
 	if true { // This exercises the *ast.BlockStmt typeswitch clause.
 		buf := make([]byte, n)
-		n, err := f.Read(buf)
+		n, err := r.Read(buf)
 		return buf[:n], err
 	}
 	return nil, nil
 }
 
-func Yes2(f *os.File) ([]byte, error) {
-	return io.ReadAll(f)
+func F2(r *os.File) ([]byte, error) {
+	return io.ReadAll(r)
 }
 
-func No3(lf *io.LimitedReader) ([]byte, int64, error) {
-	b, err := io.ReadAll(lf)
+func F3(lf *io.LimitedReader) ([]byte, int64, error) {
+	b, err := io.ReadAll((lf)) // extra parens sic
 	return b, lf.N, err
 }
 
-func No4(f *os.File) ([]byte, error) {
+func F4(f *os.File) ([]byte, error) {
 	var f2 *os.File = f // Some day perhaps decouple will be clever enough to know that f and f2 can both be io.Readers.
 	return io.ReadAll(f2)
 }
 
-func Yes5(f *os.File) ([]byte, error) {
-	var f2 io.Reader = f
+func F5(r *os.File) ([]byte, error) {
+	var f2 io.Reader = r
 	return io.ReadAll(f2)
 }
 
-func No6(f *os.File) ([]byte, error) {
-	return Yes7(f)
+func F6(f *os.File) ([]byte, error) {
+	return F7(f)
 }
 
-func Yes7(f *os.File) ([]byte, error) {
-	defer f.Close()
+func F7(rc *os.File) ([]byte, error) {
+	defer rc.Close()
 	goto LABEL
 LABEL:
-	return io.ReadAll(f)
+	return io.ReadAll(rc)
 }
 
 type intErface int
 
-func (i intErface) x() {}
-
-func Yes8(i intErface) {
-	i.x()
+func (i intErface) Read([]byte) (int, error) {
+	return 0, nil
 }
 
-func No9(i intErface) int {
-	var j int
-	j += int(i)
-	return j
-}
-
-func No10(r io.Reader) ([]byte, error) {
+func F8(r intErface) ([]byte, error) {
 	return io.ReadAll(r)
 }
 
-func Yes11(f *os.File) ([]byte, error) {
-	return io.ReadAll((f))
+func F9(i intErface) int {
+	return int(i) + 1
 }
 
-func No12(f *os.File) ([]byte, error) {
-	f2 := *f
-	return io.ReadAll(&f2)
+func F10(r *os.File) ([]byte, error) {
+	var r2 io.Reader
+	r2 = r // separate non-defining assignment line sic
+	return io.ReadAll(r2)
 }
 
-func Yes13(f *os.File) ([]byte, error) {
-	var r io.Reader
-	r = f
-	return io.ReadAll(r)
-}
-
-func Yes14(f *os.File) ([]byte, error) {
-	switch f {
-	case f:
-		return io.ReadAll(f)
+func F11(r *os.File) ([]byte, error) {
+	switch r {
+	case r:
+		return io.ReadAll(r)
 	default:
 		return nil, nil
 	}
 }
 
-func No15(f *os.File) ([]byte, error) {
+func F12(f *os.File) ([]byte, error) {
 	var f2 os.File
 	switch f2 {
 	case *f:
@@ -97,17 +89,42 @@ func No15(f *os.File) ([]byte, error) {
 	}
 }
 
-func Yes16(ctx context.Context, ch chan<- io.Reader, f *os.File) {
+func F13(ctx context.Context, ch chan<- io.Reader, r *os.File) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case ch <- f:
+		case ch <- r:
 			// do nothing
 		}
 	}
 }
 
-func Yes17(f *os.File) []io.Reader {
-	return []io.Reader{f}
+func F14(r *os.File) []io.Reader {
+	return []io.Reader{r}
+}
+
+type boolErface bool
+
+func (b boolErface) Read([]byte) (int, error) {
+	return 0, nil
+}
+
+func F15(b boolErface) ([]byte, error) {
+	switch {
+	case bool(b):
+		return io.ReadAll(b)
+	default:
+		return nil, nil
+	}
+}
+
+func F16(b boolErface) ([]byte, error) {
+	switch {
+	case true:
+		if bool(b) {
+			return io.ReadAll(b)
+		}
+	}
+	return nil, nil
 }

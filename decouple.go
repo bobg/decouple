@@ -13,32 +13,23 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// Load loads the Go modules in and below dir.
+const PkgMode = packages.NeedName | packages.NeedFiles | packages.NeedImports | packages.NeedDeps | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo
+
+// AnalyzeDir loads the Go modules in and below dir.
 // It analyzes the functions in them,
 // looking for parameters with concrete types that could be interfaces instead.
 // The result is a list of Tuples,
 // one for each function analyzed that has eligible parameters.
-func Load(ctx context.Context, dir string, verbose bool) (result []Tuple, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			if d, ok := r.(derr); ok {
-				err = d
-			} else {
-				panic(r)
-			}
-		}
-	}()
-
+func AnalyzeDir(ctx context.Context, dir string, verbose bool) ([]Tuple, error) {
 	conf := &packages.Config{
 		Context: ctx,
 		Dir:     dir,
-		Mode:    packages.NeedName | packages.NeedFiles | packages.NeedImports | packages.NeedDeps | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo,
+		Mode:    PkgMode,
 	}
 	pkgs, err := packages.Load(conf, "./...")
 	if err != nil {
 		return nil, errors.Wrapf(err, "loading packages from %s", dir)
 	}
-
 	for _, pkg := range pkgs {
 		for _, pkgerr := range pkg.Errors {
 			err = multierr.Append(err, errors.Wrapf(pkgerr, "in package %s", pkg.PkgPath))
@@ -48,26 +39,44 @@ func Load(ctx context.Context, dir string, verbose bool) (result []Tuple, err er
 		return nil, errors.Wrapf(err, "after loading packages from %s", dir)
 	}
 
+	return AnalyzePkgs(pkgs, verbose)
+}
+
+func AnalyzePkgs(pkgs []*packages.Package, verbose bool) ([]Tuple, error) {
+	var result []Tuple
+
 	for _, pkg := range pkgs {
-		for _, file := range pkg.Syntax {
-			for _, decl := range file.Decls {
-				fndecl, ok := decl.(*ast.FuncDecl)
-				if !ok {
-					continue
-				}
-				m, err := analyzeFnDecl(fndecl, pkg, verbose)
-				if err != nil {
-					return nil, errors.Wrapf(err, "analyzing function %s at %s", fndecl.Name.Name, pkg.Fset.Position(fndecl.Name.Pos()))
-				}
-				if len(m) == 0 {
-					continue
-				}
-				result = append(result, Tuple{
-					F: fndecl,
-					P: pkg.Fset.Position(fndecl.Name.Pos()),
-					M: m,
-				})
+		pkgResult, err := AnalyzePkg(pkg, verbose)
+		if err != nil {
+			return nil, errors.Wrapf(err, "analyzing package %s", pkg.PkgPath)
+		}
+		result = append(result, pkgResult...)
+	}
+
+	return result, nil
+}
+
+func AnalyzePkg(pkg *packages.Package, verbose bool) ([]Tuple, error) {
+	var result []Tuple
+
+	for _, file := range pkg.Syntax {
+		for _, decl := range file.Decls {
+			fndecl, ok := decl.(*ast.FuncDecl)
+			if !ok {
+				continue
 			}
+			m, err := AnalyzeFunc(fndecl, pkg, verbose)
+			if err != nil {
+				return nil, errors.Wrapf(err, "analyzing function %s at %s", fndecl.Name.Name, pkg.Fset.Position(fndecl.Name.Pos()))
+			}
+			if len(m) == 0 {
+				continue
+			}
+			result = append(result, Tuple{
+				F: fndecl,
+				P: pkg.Fset.Position(fndecl.Name.Pos()),
+				M: m,
+			})
 		}
 	}
 
@@ -80,43 +89,59 @@ type Tuple struct {
 	M map[string]set.Of[string]
 }
 
-func analyzeFnDecl(fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (map[string]set.Of[string], error) {
+func AnalyzeFunc(fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (map[string]set.Of[string], error) {
 	result := make(map[string]set.Of[string])
 	for _, field := range fndecl.Type.Params.List {
 		for _, name := range field.Names {
 			if name.Name == "_" {
 				continue
 			}
-			obj, ok := pkg.TypesInfo.Defs[name]
-			if !ok {
-				return nil, fmt.Errorf("no def found for parameter %s of %s", name.Name, fndecl.Name.Name)
+
+			nameResult, err := AnalyzeParam(name, fndecl, pkg, verbose)
+			if err != nil {
+				return nil, errors.Wrapf(err, "analyzing parameter %s of %s", name.Name, fndecl.Name.Name)
 			}
-			if intf := getInterface(obj.Type()); intf != nil {
-				// TODO: see whether this param can be a smaller interface?
-				continue
+			if nameResult != nil {
+				result[name.Name] = nameResult
 			}
-			canBeInterface := true
-			a := analyzer{
-				name:    name,
-				obj:     obj,
-				pkg:     pkg,
-				methods: set.New[string](),
-				debug:   verbose,
-			}
-			a.debugf("fn %s param %s", fndecl.Name.Name, name.Name)
-			for _, stmt := range fndecl.Body.List {
-				if !a.stmt(stmt) {
-					canBeInterface = false
-					break
-				}
-			}
-			if !canBeInterface {
-				continue
-			}
-			result[name.Name] = a.methods
 		}
 	}
 	return result, nil
+}
+
+func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (_ set.Of[string], err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if d, ok := r.(derr); ok {
+				err = d
+			} else {
+				panic(r)
+			}
+		}
+	}()
+
+	obj, ok := pkg.TypesInfo.Defs[name]
+	if !ok {
+		return nil, fmt.Errorf("no def found")
+	}
+	if intf := getInterface(obj.Type()); intf != nil {
+		// TODO: see whether this param can be a smaller interface?
+		return nil, nil
+	}
+	a := analyzer{
+		name:    name,
+		obj:     obj,
+		pkg:     pkg,
+		methods: set.New[string](),
+		debug:   verbose,
+	}
+	a.debugf("fn %s param %s", fndecl.Name.Name, name.Name)
+	for _, stmt := range fndecl.Body.List {
+		if !a.stmt(stmt) {
+			return nil, nil
+		}
+	}
+	return a.methods, nil
 }
 
 type analyzer struct {
@@ -290,6 +315,9 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 		if a.isObj(stmt.Cond) {
 			return false
 		}
+		if !a.expr(stmt.Cond) {
+			return false
+		}
 		if !a.stmt(stmt.Body) {
 			return false
 		}
@@ -348,6 +376,9 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 
 	case *ast.SendStmt:
 		if a.isObj(stmt.Chan) {
+			return false
+		}
+		if !a.expr(stmt.Chan) {
 			return false
 		}
 		if a.isObj(stmt.Value) {

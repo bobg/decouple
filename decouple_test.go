@@ -2,41 +2,81 @@ package decouple
 
 import (
 	"context"
-	"reflect"
+	"go/ast"
 	"testing"
 
 	"github.com/bobg/go-generics/set"
+	"github.com/pkg/errors"
+	"go.uber.org/multierr"
+	"golang.org/x/tools/go/packages"
 	// "github.com/davecgh/go-spew/spew"
 )
 
-func TestLoad(t *testing.T) {
+func TestAnalyze(t *testing.T) {
 	ctx := context.Background()
-	res, err := Load(ctx, "_testdata", false)
+
+	conf := &packages.Config{
+		Context: ctx,
+		Dir:     "_testdata",
+		Mode:    PkgMode,
+	}
+	pkgs, err := packages.Load(conf, "./...")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pkg := range pkgs {
+		for _, pkgerr := range pkg.Errors {
+			err = multierr.Append(err, errors.Wrapf(pkgerr, "in package %s", pkg.PkgPath))
+		}
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// spew.Dump(res)
+	var (
+		readerMethods       = set.New[string]("Read")
+		readerCloserMethods = set.New[string]("Read", "Close")
+	)
 
-	got := make(map[string]map[string]set.Of[string])
-	for _, tuple := range res {
-		got[tuple.F.Name.Name] = tuple.M
-	}
+	for _, pkg := range pkgs {
+		for _, file := range pkg.Syntax {
+			for _, decl := range file.Decls {
+				fndecl, ok := decl.(*ast.FuncDecl)
+				if !ok {
+					continue
+				}
+				t.Run(fndecl.Name.Name, func(t *testing.T) {
+					for _, field := range fndecl.Type.Params.List {
+						for _, name := range field.Names {
+							if name.Name == "_" {
+								continue
+							}
+							t.Run(name.Name, func(t *testing.T) {
+								got, err := AnalyzeParam(name, fndecl, pkg, false)
+								if err != nil {
+									t.Fatal(err)
+								}
+								switch name.Name {
+								case "r":
+									if !got.Equal(readerMethods) {
+										t.Errorf("got %v, want %v", got, readerMethods)
+									}
 
-	want := map[string]map[string]set.Of[string]{
-		"Yes1":  {"f": set.New[string]("Read")},
-		"Yes2":  {"f": set.New[string]("Read")},
-		"Yes5":  {"f": set.New[string]("Read")},
-		"Yes7":  {"f": set.New[string]("Read", "Close")},
-		"Yes8":  {"i": set.New[string]("x")},
-		"Yes11": {"f": set.New[string]("Read")},
-		"Yes13": {"f": set.New[string]("Read")},
-		"Yes14": {"f": set.New[string]("Read")},
-		"Yes16": {"f": set.New[string]("Read")},
-		"Yes17": {"f": set.New[string]("Read")},
-	}
+								case "rc":
+									if !got.Equal(readerCloserMethods) {
+										t.Errorf("got %v, want %v", got, readerCloserMethods)
+									}
 
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %+v, want %+v", got, want)
+								default:
+									if got.Len() > 0 {
+										t.Errorf("got %v, want nil", got)
+									}
+								}
+							})
+						}
+					}
+				})
+			}
+		}
 	}
 }
