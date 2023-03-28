@@ -129,11 +129,12 @@ func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkg *packages.Package, 
 		return nil, nil
 	}
 	a := analyzer{
-		name:    name,
-		obj:     obj,
-		pkg:     pkg,
-		methods: set.New[string](),
-		debug:   verbose,
+		name:          name,
+		obj:           obj,
+		pkg:           pkg,
+		methods:       set.New[string](),
+		enclosingFunc: &funcDeclOrLit{decl: fndecl},
+		debug:         verbose,
 	}
 	a.debugf("fn %s param %s", fndecl.Name.Name, name.Name)
 	for _, stmt := range fndecl.Body.List {
@@ -144,17 +145,41 @@ func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkg *packages.Package, 
 	return a.methods, nil
 }
 
+type funcDeclOrLit struct {
+	decl *ast.FuncDecl
+	lit  *ast.FuncLit
+}
+
 type analyzer struct {
 	name    *ast.Ident
 	obj     types.Object
 	pkg     *packages.Package
 	methods set.Of[string]
 
-	enclosingFuncType   *ast.FuncType
+	enclosingFunc       *funcDeclOrLit
 	enclosingSwitchStmt *ast.SwitchStmt
 
 	level int
 	debug bool
+}
+
+func (a *analyzer) enclosingFuncInfo() (types.Type, token.Position, bool) {
+	if a.enclosingFunc == nil {
+		return nil, token.Position{}, false
+	}
+	if decl := a.enclosingFunc.decl; decl != nil {
+		obj, ok := a.pkg.TypesInfo.Defs[decl.Name]
+		if !ok {
+			return nil, token.Position{}, false
+		}
+		return obj.Type(), a.pos(obj), true
+	}
+	lit := a.enclosingFunc.lit
+	tv, ok := a.pkg.TypesInfo.Types[lit]
+	if !ok {
+		return nil, token.Position{}, false
+	}
+	return tv.Type, a.pos(lit), true
 }
 
 func (a *analyzer) isFunc(expr ast.Expr) bool {
@@ -346,13 +371,13 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 	case *ast.ReturnStmt:
 		for i, expr := range stmt.Results {
 			if a.isObj(expr) {
-				tv, ok := a.pkg.TypesInfo.Types[a.enclosingFuncType]
+				typ, fpos, ok := a.enclosingFuncInfo()
 				if !ok {
-					panic(errf("no type info for function at %s", a.pos(a.enclosingFuncType)))
+					panic(errf("no type info for function containing return statement at %s", a.pos(expr)))
 				}
-				sig, ok := tv.Type.(*types.Signature)
+				sig, ok := typ.(*types.Signature)
 				if !ok {
-					panic(errf("got %T, want *types.Signature for type of function at %s", tv.Type, a.pos(a.enclosingFuncType)))
+					panic(errf("got %T, want *types.Signature for type of function at %s", typ, fpos))
 				}
 				if i >= sig.Results().Len() {
 					panic(errf("cannot return %d value(s) from %d-value-returning function at %s", i+1, sig.Results().Len(), a.pos(stmt)))
@@ -797,9 +822,9 @@ func (a *analyzer) decl(decl ast.Decl) bool {
 		return true
 
 	case *ast.FuncDecl:
-		outer := a.enclosingFuncType
-		a.enclosingFuncType = decl.Type
-		defer func() { a.enclosingFuncType = outer }()
+		outer := a.enclosingFunc
+		a.enclosingFunc = &funcDeclOrLit{decl: decl}
+		defer func() { a.enclosingFunc = outer }()
 
 		return a.stmt(decl.Body)
 
@@ -809,10 +834,10 @@ func (a *analyzer) decl(decl ast.Decl) bool {
 }
 
 func (a *analyzer) funcLit(expr *ast.FuncLit) bool {
-	outer := a.enclosingFuncType
-	a.enclosingFuncType = expr.Type
+	outer := a.enclosingFunc
+	a.enclosingFunc = &funcDeclOrLit{lit: expr}
 	defer func() {
-		a.enclosingFuncType = outer
+		a.enclosingFunc = outer
 	}()
 
 	return a.stmt(expr.Body)
