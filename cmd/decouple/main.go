@@ -45,11 +45,19 @@ func main() {
 	})
 
 	for _, tuple := range tuples {
-		fmt.Printf("%s: %s\n", tuple.P, tuple.F.Name.Name)
+		var showedFuncName bool
+
 		params := maps.Keys(tuple.M)
 		sort.Strings(params)
 		for _, param := range params {
 			methods := tuple.M[param].Slice()
+			if len(methods) == 0 {
+				continue
+			}
+			if !showedFuncName {
+				fmt.Printf("%s: %s\n", tuple.P, tuple.F.Name.Name)
+				showedFuncName = true
+			}
 			sort.Strings(methods)
 			fmt.Printf("    %s: %v\n", param, methods)
 		}

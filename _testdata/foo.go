@@ -128,3 +128,29 @@ func F16(b boolErface) ([]byte, error) {
 	}
 	return nil, nil
 }
+
+func F17(r *os.File) ([]byte, error) {
+	var x io.Reader
+	if r == x {
+		return nil, nil
+	}
+	return io.ReadAll(r)
+}
+
+func F18(f *os.File) ([]byte, error) {
+	if f == nil {
+		return nil, nil
+	}
+	return io.ReadAll(f)
+}
+
+type funcErface func()
+
+func (f funcErface) Read([]byte) (int, error) {
+	return 0, nil
+}
+
+func F19(f funcErface) ([]byte, error) {
+	f()
+	return io.ReadAll(f)
+}
