@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"go/types"
 	"reflect"
+	"strings"
 
 	"github.com/bobg/go-generics/set"
 	"github.com/pkg/errors"
@@ -150,7 +151,7 @@ func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkgs []*packages.Packag
 		}
 	}
 
-	if false && len(a.methods) > 0 {
+	if true && len(a.methods) > 0 {
 		findMatchingNamedInterface(pkgs, a.methods, name.Name, fndecl.Name.Name)
 	}
 
@@ -890,23 +891,28 @@ func getIdent(expr ast.Expr) *ast.Ident {
 }
 
 func findMatchingNamedInterface(pkgs []*packages.Package, mm MethodMap, paramName, fnName string) {
-	if found := findMatchingNamedInterfaceHelper(pkgs, mm, set.New[*packages.Package]()); found != nil {
-		fmt.Printf("xxx param %s, func %s: found matching interface %s\n", paramName, fnName, found.Name.Name)
+	if found, pkg := findMatchingNamedInterfaceHelper(pkgs, mm, set.New[*packages.Package]()); found != nil {
+		foundname := pkg.PkgPath
+		if strings.ContainsAny(foundname, "./") {
+			foundname = fmt.Sprintf(`"%s"`, foundname)
+		}
+		foundname = fmt.Sprintf("%s.%s", foundname, found.Name.Name)
+		fmt.Printf("xxx param %s, func %s: found matching interface %s\n", paramName, fnName, foundname)
 	}
 }
 
-func findMatchingNamedInterfaceHelper(pkgs []*packages.Package, mm MethodMap, seen set.Of[*packages.Package]) *ast.TypeSpec {
+func findMatchingNamedInterfaceHelper(pkgs []*packages.Package, mm MethodMap, seen set.Of[*packages.Package]) (*ast.TypeSpec, *packages.Package) {
 	for _, pkg := range pkgs {
-		if found := findMatchingNamedInterfaceInPkg(pkg, mm, seen); found != nil {
-			return found
+		if found, foundpkg := findMatchingNamedInterfaceInPkg(pkg, mm, seen); found != nil {
+			return found, foundpkg
 		}
 	}
-	return nil
+	return nil, nil
 }
 
-func findMatchingNamedInterfaceInPkg(pkg *packages.Package, mm MethodMap, seen set.Of[*packages.Package]) *ast.TypeSpec {
+func findMatchingNamedInterfaceInPkg(pkg *packages.Package, mm MethodMap, seen set.Of[*packages.Package]) (*ast.TypeSpec, *packages.Package) {
 	if seen.Has(pkg) {
-		return nil
+		return nil, nil
 	}
 	seen.Add(pkg)
 
@@ -937,17 +943,17 @@ func findMatchingNamedInterfaceInPkg(pkg *packages.Package, mm MethodMap, seen s
 				mmm := make(MethodMap)
 				addMethodsToMap(intf, mmm)
 				if reflect.DeepEqual(mm, mmm) {
-					return typespec
+					return typespec, pkg
 				}
 			}
 		}
 	}
 
 	for _, ipkg := range pkg.Imports {
-		if found := findMatchingNamedInterfaceInPkg(ipkg, mm, seen); found != nil {
-			return found
+		if found, foundpkg := findMatchingNamedInterfaceInPkg(ipkg, mm, seen); found != nil {
+			return found, foundpkg
 		}
 	}
 
-	return nil
+	return nil, nil
 }
