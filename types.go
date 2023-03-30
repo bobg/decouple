@@ -45,14 +45,3 @@ func getMap(typ types.Type) *types.Map {
 		return nil
 	}
 }
-
-func isFunc(typ types.Type) bool {
-	switch typ := typ.(type) {
-	case *types.Signature:
-		return true
-	case *types.Named:
-		return isFunc(typ.Underlying())
-	default:
-		return false
-	}
-}

@@ -50,7 +50,7 @@ func main() {
 		params := maps.Keys(tuple.M)
 		sort.Strings(params)
 		for _, param := range params {
-			methods := tuple.M[param].Slice()
+			methods := maps.Keys(tuple.M[param])
 			if len(methods) == 0 {
 				continue
 			}

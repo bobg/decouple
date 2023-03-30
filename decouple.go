@@ -7,7 +7,6 @@ import (
 	"go/token"
 	"go/types"
 
-	"github.com/bobg/go-generics/set"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"golang.org/x/tools/go/packages"
@@ -86,11 +85,13 @@ func AnalyzePkg(pkg *packages.Package, verbose bool) ([]Tuple, error) {
 type Tuple struct {
 	F *ast.FuncDecl
 	P token.Position
-	M map[string]set.Of[string]
+	M map[string]MethodMap
 }
 
-func AnalyzeFunc(fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (map[string]set.Of[string], error) {
-	result := make(map[string]set.Of[string])
+type MethodMap = map[string]*types.Signature
+
+func AnalyzeFunc(fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (map[string]MethodMap, error) {
+	result := make(map[string]MethodMap)
 	for _, field := range fndecl.Type.Params.List {
 		for _, name := range field.Names {
 			if name.Name == "_" {
@@ -101,7 +102,7 @@ func AnalyzeFunc(fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (map
 			if err != nil {
 				return nil, errors.Wrapf(err, "analyzing parameter %s of %s", name.Name, fndecl.Name.Name)
 			}
-			if nameResult != nil {
+			if len(nameResult) != 0 {
 				result[name.Name] = nameResult
 			}
 		}
@@ -109,7 +110,7 @@ func AnalyzeFunc(fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (map
 	return result, nil
 }
 
-func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (_ set.Of[string], err error) {
+func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (_ MethodMap, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if d, ok := r.(derr); ok {
@@ -132,7 +133,7 @@ func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkg *packages.Package, 
 		name:          name,
 		obj:           obj,
 		pkg:           pkg,
-		methods:       set.New[string](),
+		methods:       make(MethodMap),
 		enclosingFunc: &funcDeclOrLit{decl: fndecl},
 		debug:         verbose,
 	}
@@ -154,7 +155,7 @@ type analyzer struct {
 	name    *ast.Ident
 	obj     types.Object
 	pkg     *packages.Package
-	methods set.Of[string]
+	methods MethodMap
 
 	enclosingFunc       *funcDeclOrLit
 	enclosingSwitchStmt *ast.SwitchStmt
@@ -182,8 +183,8 @@ func (a *analyzer) enclosingFuncInfo() (types.Type, token.Position, bool) {
 	return tv.Type, a.pos(lit), true
 }
 
-func (a *analyzer) isFunc(expr ast.Expr) bool {
-	return isFunc(a.pkg.TypesInfo.Types[expr].Type)
+func (a *analyzer) getSig(expr ast.Expr) *types.Signature {
+	return getSig(a.pkg.TypesInfo.Types[expr].Type)
 }
 
 // Does expr denote the object in a?
@@ -448,9 +449,15 @@ type methoder interface {
 }
 
 func (a *analyzer) addMethods(intf methoder) {
+	addMethodsToMap(intf, a.methods)
+}
+
+func addMethodsToMap(intf methoder, mm MethodMap) {
 	for i := 0; i < intf.NumMethods(); i++ {
 		m := intf.Method(i)
-		a.methods.Add(m.Name())
+
+		// m is a *types.Func, and the Type() of a *types.Func is always *types.Signature.
+		mm[m.Name()] = m.Type().(*types.Signature)
 	}
 }
 
@@ -735,8 +742,8 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 
 	case *ast.SelectorExpr:
 		if a.isObj(expr.X) {
-			if a.isFunc(expr) {
-				a.methods.Add(expr.Sel.Name)
+			if sig := a.getSig(expr); sig != nil {
+				a.methods[expr.Sel.Name] = sig
 				return true
 			}
 			return false

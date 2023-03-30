@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"testing"
 
+	"github.com/bobg/go-generics/maps"
 	"github.com/bobg/go-generics/set"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
@@ -56,19 +57,20 @@ func TestAnalyze(t *testing.T) {
 								if err != nil {
 									t.Fatal(err)
 								}
+								gotMethodNames := set.New[string](maps.Keys(got)...)
 								switch name.Name {
 								case "r":
-									if !got.Equal(readerMethods) {
+									if !gotMethodNames.Equal(readerMethods) {
 										t.Errorf("got %v, want %v", got, readerMethods)
 									}
 
 								case "rc":
-									if !got.Equal(readerCloserMethods) {
+									if !gotMethodNames.Equal(readerCloserMethods) {
 										t.Errorf("got %v, want %v", got, readerCloserMethods)
 									}
 
 								default:
-									if got.Len() > 0 {
+									if gotMethodNames.Len() > 0 {
 										t.Errorf("got %v, want nil", got)
 									}
 								}
