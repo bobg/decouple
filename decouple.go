@@ -1,16 +1,12 @@
 package decouple
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
-	"sort"
 	"strings"
 
-	"github.com/bobg/go-generics/maps"
 	"github.com/bobg/go-generics/set"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
@@ -23,7 +19,7 @@ type Checker struct {
 	Verbose bool
 
 	pkgs            []*packages.Package
-	namedInterfaces map[string]string // maps a method-set hash to a package-qualified type name
+	namedInterfaces map[string]MethodMap // maps a package-qualified interface-type name to its method set
 }
 
 func NewCheckerFromDir(dir string) (Checker, error) {
@@ -45,7 +41,7 @@ func NewCheckerFromDir(dir string) (Checker, error) {
 
 func NewCheckerFromPackages(pkgs []*packages.Package) Checker {
 	var (
-		namedInterfaces = make(map[string]string)
+		namedInterfaces = make(map[string]MethodMap)
 		seen            = set.New[*packages.Package]()
 	)
 	for _, pkg := range pkgs {
@@ -54,7 +50,7 @@ func NewCheckerFromPackages(pkgs []*packages.Package) Checker {
 	return Checker{pkgs: pkgs, namedInterfaces: namedInterfaces}
 }
 
-func findNamedInterfaces(pkg *packages.Package, seen set.Of[*packages.Package], namedInterfaces map[string]string) {
+func findNamedInterfaces(pkg *packages.Package, seen set.Of[*packages.Package], namedInterfaces map[string]MethodMap) {
 	if seen.Has(pkg) {
 		return
 	}
@@ -97,19 +93,12 @@ func findNamedInterfaces(pkg *packages.Package, seen set.Of[*packages.Package], 
 				}
 				mm := make(MethodMap)
 				addMethodsToMap(intf, mm)
-				h := methodMapHash(mm)
-				if _, ok := namedInterfaces[h]; ok {
-					continue
-				}
-
 				name := pkg.PkgPath
 				if strings.ContainsAny(name, "./") {
 					name = `"` + name + `"`
 				}
 				name += "." + typespec.Name.Name
-				namedInterfaces[h] = name
-
-				fmt.Printf("  xxx %s -> %s\n", h, name)
+				namedInterfaces[name] = mm
 			}
 		}
 	}
@@ -957,20 +946,6 @@ func getIdent(expr ast.Expr) *ast.Ident {
 	default:
 		return nil
 	}
-}
-
-// xxx must be insensitive to differences in param names
-func methodMapHash(mm MethodMap) string {
-	h := sha256.New()
-	keys := maps.Keys(mm)
-	sort.Strings(keys)
-	for _, key := range keys {
-		sig := mm[key]
-		fmt.Fprintln(h, key)
-		fmt.Fprintln(h, sig.String())
-		fmt.Printf("    xxx %s %s\n", key, sig)
-	}
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 func isInternal(path string) bool {
