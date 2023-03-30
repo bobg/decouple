@@ -1,14 +1,16 @@
 package decouple
 
 import (
-	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
-	"reflect"
+	"sort"
 	"strings"
 
+	"github.com/bobg/go-generics/maps"
 	"github.com/bobg/go-generics/set"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
@@ -17,20 +19,18 @@ import (
 
 const PkgMode = packages.NeedName | packages.NeedFiles | packages.NeedImports | packages.NeedDeps | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo
 
-// AnalyzeDir loads the Go modules in and below dir.
-// It analyzes the functions in them,
-// looking for parameters with concrete types that could be interfaces instead.
-// The result is a list of Tuples,
-// one for each function analyzed that has eligible parameters.
-func AnalyzeDir(ctx context.Context, dir string, verbose bool) ([]Tuple, error) {
-	conf := &packages.Config{
-		Context: ctx,
-		Dir:     dir,
-		Mode:    PkgMode,
-	}
+type Checker struct {
+	Verbose bool
+
+	pkgs            []*packages.Package
+	namedInterfaces map[string]string // maps a method-set hash to a package-qualified type name
+}
+
+func NewCheckerFromDir(dir string) (Checker, error) {
+	conf := &packages.Config{Dir: dir, Mode: PkgMode}
 	pkgs, err := packages.Load(conf, "./...")
 	if err != nil {
-		return nil, errors.Wrapf(err, "loading packages from %s", dir)
+		return Checker{}, errors.Wrapf(err, "loading packages from %s", dir)
 	}
 	for _, pkg := range pkgs {
 		for _, pkgerr := range pkg.Errors {
@@ -38,19 +38,96 @@ func AnalyzeDir(ctx context.Context, dir string, verbose bool) ([]Tuple, error) 
 		}
 	}
 	if err != nil {
-		return nil, errors.Wrapf(err, "after loading packages from %s", dir)
+		return Checker{}, errors.Wrapf(err, "after loading packages from %s", dir)
 	}
-
-	return AnalyzePkgs(pkgs, verbose)
+	return NewCheckerFromPackages(pkgs), nil
 }
 
-func AnalyzePkgs(pkgs []*packages.Package, verbose bool) ([]Tuple, error) {
+func NewCheckerFromPackages(pkgs []*packages.Package) Checker {
+	var (
+		namedInterfaces = make(map[string]string)
+		seen            = set.New[*packages.Package]()
+	)
+	for _, pkg := range pkgs {
+		findNamedInterfaces(pkg, seen, namedInterfaces)
+	}
+	return Checker{pkgs: pkgs, namedInterfaces: namedInterfaces}
+}
+
+func findNamedInterfaces(pkg *packages.Package, seen set.Of[*packages.Package], namedInterfaces map[string]string) {
+	if seen.Has(pkg) {
+		return
+	}
+	seen.Add(pkg)
+
+	for _, ipkg := range pkg.Imports {
+		findNamedInterfaces(ipkg, seen, namedInterfaces)
+	}
+
+	if isInternal(pkg.PkgPath) {
+		return
+	}
+
+	for _, file := range pkg.Syntax {
+		for _, decl := range file.Decls {
+			gendecl, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			if gendecl.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range gendecl.Specs {
+				typespec, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					// Should be impossible.
+					continue
+				}
+				if !ast.IsExported(typespec.Name.Name) {
+					continue
+				}
+				obj := pkg.TypesInfo.Defs[typespec.Name]
+				if obj == nil {
+					// Should be impossible.
+					continue
+				}
+				intf := getInterface(obj.Type())
+				if intf == nil {
+					continue
+				}
+				mm := make(MethodMap)
+				addMethodsToMap(intf, mm)
+				h := methodMapHash(mm)
+				if _, ok := namedInterfaces[h]; ok {
+					continue
+				}
+
+				name := pkg.PkgPath
+				if strings.ContainsAny(name, "./") {
+					name = `"` + name + `"`
+				}
+				name += "." + typespec.Name.Name
+				namedInterfaces[h] = name
+
+				fmt.Printf("  xxx %s -> %s\n", h, name)
+			}
+		}
+	}
+
+}
+
+// Check checks all the packages in the Checker.
+// It analyzes the functions in them,
+// looking for parameters with concrete types that could be interfaces instead.
+// The result is a list of Tuples,
+// one for each function checked that has eligible parameters.
+func (ch Checker) Check() ([]Tuple, error) {
 	var result []Tuple
 
-	for i := range pkgs {
-		pkgResult, err := AnalyzePkg(pkgs, i, verbose)
+	for _, pkg := range ch.pkgs {
+		pkgResult, err := ch.CheckPackage(pkg)
 		if err != nil {
-			return nil, errors.Wrapf(err, "analyzing package %s", pkgs[i].PkgPath)
+			return nil, errors.Wrapf(err, "analyzing package %s", pkg.PkgPath)
 		}
 		result = append(result, pkgResult...)
 	}
@@ -58,11 +135,8 @@ func AnalyzePkgs(pkgs []*packages.Package, verbose bool) ([]Tuple, error) {
 	return result, nil
 }
 
-func AnalyzePkg(pkgs []*packages.Package, idx int, verbose bool) ([]Tuple, error) {
-	var (
-		pkg    = pkgs[idx]
-		result []Tuple
-	)
+func (ch Checker) CheckPackage(pkg *packages.Package) ([]Tuple, error) {
+	var result []Tuple
 
 	for _, file := range pkg.Syntax {
 		for _, decl := range file.Decls {
@@ -70,7 +144,7 @@ func AnalyzePkg(pkgs []*packages.Package, idx int, verbose bool) ([]Tuple, error
 			if !ok {
 				continue
 			}
-			m, err := AnalyzeFunc(fndecl, pkgs, idx, verbose)
+			m, err := ch.CheckFunc(pkg, fndecl)
 			if err != nil {
 				return nil, errors.Wrapf(err, "analyzing function %s at %s", fndecl.Name.Name, pkg.Fset.Position(fndecl.Name.Pos()))
 			}
@@ -96,7 +170,7 @@ type Tuple struct {
 
 type MethodMap = map[string]*types.Signature
 
-func AnalyzeFunc(fndecl *ast.FuncDecl, pkgs []*packages.Package, idx int, verbose bool) (map[string]MethodMap, error) {
+func (ch Checker) CheckFunc(pkg *packages.Package, fndecl *ast.FuncDecl) (map[string]MethodMap, error) {
 	result := make(map[string]MethodMap)
 	for _, field := range fndecl.Type.Params.List {
 		for _, name := range field.Names {
@@ -104,7 +178,7 @@ func AnalyzeFunc(fndecl *ast.FuncDecl, pkgs []*packages.Package, idx int, verbos
 				continue
 			}
 
-			nameResult, err := AnalyzeParam(name, fndecl, pkgs, idx, verbose)
+			nameResult, err := ch.CheckParam(pkg, fndecl, name)
 			if err != nil {
 				return nil, errors.Wrapf(err, "analyzing parameter %s of %s", name.Name, fndecl.Name.Name)
 			}
@@ -116,7 +190,7 @@ func AnalyzeFunc(fndecl *ast.FuncDecl, pkgs []*packages.Package, idx int, verbos
 	return result, nil
 }
 
-func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkgs []*packages.Package, idx int, verbose bool) (_ MethodMap, err error) {
+func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *ast.Ident) (_ MethodMap, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if d, ok := r.(derr); ok {
@@ -127,10 +201,9 @@ func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkgs []*packages.Packag
 		}
 	}()
 
-	pkg := pkgs[idx]
 	obj, ok := pkg.TypesInfo.Defs[name]
 	if !ok {
-		return nil, fmt.Errorf("no def found")
+		return nil, fmt.Errorf("no def found for %s", name.Name)
 	}
 	if intf := getInterface(obj.Type()); intf != nil {
 		// TODO: see whether this param can be a smaller interface?
@@ -142,17 +215,13 @@ func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkgs []*packages.Packag
 		pkg:           pkg,
 		methods:       make(MethodMap),
 		enclosingFunc: &funcDeclOrLit{decl: fndecl},
-		debug:         verbose,
+		debug:         ch.Verbose,
 	}
 	a.debugf("fn %s param %s", fndecl.Name.Name, name.Name)
 	for _, stmt := range fndecl.Body.List {
 		if !a.stmt(stmt) {
 			return nil, nil
 		}
-	}
-
-	if true && len(a.methods) > 0 {
-		findMatchingNamedInterface(pkgs, a.methods, name.Name, fndecl.Name.Name)
 	}
 
 	return a.methods, nil
@@ -890,70 +959,29 @@ func getIdent(expr ast.Expr) *ast.Ident {
 	}
 }
 
-func findMatchingNamedInterface(pkgs []*packages.Package, mm MethodMap, paramName, fnName string) {
-	if found, pkg := findMatchingNamedInterfaceHelper(pkgs, mm, set.New[*packages.Package]()); found != nil {
-		foundname := pkg.PkgPath
-		if strings.ContainsAny(foundname, "./") {
-			foundname = fmt.Sprintf(`"%s"`, foundname)
-		}
-		foundname = fmt.Sprintf("%s.%s", foundname, found.Name.Name)
-		fmt.Printf("xxx param %s, func %s: found matching interface %s\n", paramName, fnName, foundname)
+// xxx must be insensitive to differences in param names
+func methodMapHash(mm MethodMap) string {
+	h := sha256.New()
+	keys := maps.Keys(mm)
+	sort.Strings(keys)
+	for _, key := range keys {
+		sig := mm[key]
+		fmt.Fprintln(h, key)
+		fmt.Fprintln(h, sig.String())
+		fmt.Printf("    xxx %s %s\n", key, sig)
 	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
-func findMatchingNamedInterfaceHelper(pkgs []*packages.Package, mm MethodMap, seen set.Of[*packages.Package]) (*ast.TypeSpec, *packages.Package) {
-	for _, pkg := range pkgs {
-		if found, foundpkg := findMatchingNamedInterfaceInPkg(pkg, mm, seen); found != nil {
-			return found, foundpkg
-		}
+func isInternal(path string) bool {
+	if path == "internal" {
+		return true
 	}
-	return nil, nil
-}
-
-func findMatchingNamedInterfaceInPkg(pkg *packages.Package, mm MethodMap, seen set.Of[*packages.Package]) (*ast.TypeSpec, *packages.Package) {
-	if seen.Has(pkg) {
-		return nil, nil
+	if strings.HasPrefix(path, "internal/") {
+		return true
 	}
-	seen.Add(pkg)
-
-	for _, file := range pkg.Syntax {
-		for _, decl := range file.Decls {
-			gendecl, ok := decl.(*ast.GenDecl)
-			if !ok {
-				continue
-			}
-			if gendecl.Tok != token.TYPE {
-				continue
-			}
-			for _, spec := range gendecl.Specs {
-				typespec, ok := spec.(*ast.TypeSpec)
-				if !ok {
-					// Should be impossible.
-					continue
-				}
-				obj := pkg.TypesInfo.Defs[typespec.Name]
-				if obj == nil {
-					// Should be impossible.
-					continue
-				}
-				intf := getInterface(obj.Type())
-				if intf == nil {
-					continue
-				}
-				mmm := make(MethodMap)
-				addMethodsToMap(intf, mmm)
-				if reflect.DeepEqual(mm, mmm) {
-					return typespec, pkg
-				}
-			}
-		}
+	if strings.HasSuffix(path, "/internal") {
+		return true
 	}
-
-	for _, ipkg := range pkg.Imports {
-		if found, foundpkg := findMatchingNamedInterfaceInPkg(ipkg, mm, seen); found != nil {
-			return found, foundpkg
-		}
-	}
-
-	return nil, nil
+	return strings.Contains(path, "/internal/")
 }

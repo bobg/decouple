@@ -35,11 +35,12 @@ func TestAnalyze(t *testing.T) {
 	}
 
 	var (
+		checker             = NewCheckerFromPackages(pkgs)
 		readerMethods       = set.New[string]("Read")
 		readerCloserMethods = set.New[string]("Read", "Close")
 	)
 
-	for i, pkg := range pkgs {
+	for _, pkg := range pkgs {
 		for _, file := range pkg.Syntax {
 			for _, decl := range file.Decls {
 				fndecl, ok := decl.(*ast.FuncDecl)
@@ -53,7 +54,7 @@ func TestAnalyze(t *testing.T) {
 								continue
 							}
 							t.Run(name.Name, func(t *testing.T) {
-								got, err := AnalyzeParam(name, fndecl, pkgs, i, false)
+								got, err := checker.CheckParam(pkg, fndecl, name)
 								if err != nil {
 									t.Fatal(err)
 								}
