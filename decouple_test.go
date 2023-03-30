@@ -39,7 +39,7 @@ func TestAnalyze(t *testing.T) {
 		readerCloserMethods = set.New[string]("Read", "Close")
 	)
 
-	for _, pkg := range pkgs {
+	for i, pkg := range pkgs {
 		for _, file := range pkg.Syntax {
 			for _, decl := range file.Decls {
 				fndecl, ok := decl.(*ast.FuncDecl)
@@ -53,7 +53,7 @@ func TestAnalyze(t *testing.T) {
 								continue
 							}
 							t.Run(name.Name, func(t *testing.T) {
-								got, err := AnalyzeParam(name, fndecl, pkg, false)
+								got, err := AnalyzeParam(name, fndecl, pkgs, i, false)
 								if err != nil {
 									t.Fatal(err)
 								}

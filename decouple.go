@@ -6,7 +6,9 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"reflect"
 
+	"github.com/bobg/go-generics/set"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"golang.org/x/tools/go/packages"
@@ -44,10 +46,10 @@ func AnalyzeDir(ctx context.Context, dir string, verbose bool) ([]Tuple, error) 
 func AnalyzePkgs(pkgs []*packages.Package, verbose bool) ([]Tuple, error) {
 	var result []Tuple
 
-	for _, pkg := range pkgs {
-		pkgResult, err := AnalyzePkg(pkg, verbose)
+	for i := range pkgs {
+		pkgResult, err := AnalyzePkg(pkgs, i, verbose)
 		if err != nil {
-			return nil, errors.Wrapf(err, "analyzing package %s", pkg.PkgPath)
+			return nil, errors.Wrapf(err, "analyzing package %s", pkgs[i].PkgPath)
 		}
 		result = append(result, pkgResult...)
 	}
@@ -55,8 +57,11 @@ func AnalyzePkgs(pkgs []*packages.Package, verbose bool) ([]Tuple, error) {
 	return result, nil
 }
 
-func AnalyzePkg(pkg *packages.Package, verbose bool) ([]Tuple, error) {
-	var result []Tuple
+func AnalyzePkg(pkgs []*packages.Package, idx int, verbose bool) ([]Tuple, error) {
+	var (
+		pkg    = pkgs[idx]
+		result []Tuple
+	)
 
 	for _, file := range pkg.Syntax {
 		for _, decl := range file.Decls {
@@ -64,7 +69,7 @@ func AnalyzePkg(pkg *packages.Package, verbose bool) ([]Tuple, error) {
 			if !ok {
 				continue
 			}
-			m, err := AnalyzeFunc(fndecl, pkg, verbose)
+			m, err := AnalyzeFunc(fndecl, pkgs, idx, verbose)
 			if err != nil {
 				return nil, errors.Wrapf(err, "analyzing function %s at %s", fndecl.Name.Name, pkg.Fset.Position(fndecl.Name.Pos()))
 			}
@@ -90,7 +95,7 @@ type Tuple struct {
 
 type MethodMap = map[string]*types.Signature
 
-func AnalyzeFunc(fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (map[string]MethodMap, error) {
+func AnalyzeFunc(fndecl *ast.FuncDecl, pkgs []*packages.Package, idx int, verbose bool) (map[string]MethodMap, error) {
 	result := make(map[string]MethodMap)
 	for _, field := range fndecl.Type.Params.List {
 		for _, name := range field.Names {
@@ -98,7 +103,7 @@ func AnalyzeFunc(fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (map
 				continue
 			}
 
-			nameResult, err := AnalyzeParam(name, fndecl, pkg, verbose)
+			nameResult, err := AnalyzeParam(name, fndecl, pkgs, idx, verbose)
 			if err != nil {
 				return nil, errors.Wrapf(err, "analyzing parameter %s of %s", name.Name, fndecl.Name.Name)
 			}
@@ -110,7 +115,7 @@ func AnalyzeFunc(fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (map
 	return result, nil
 }
 
-func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkg *packages.Package, verbose bool) (_ MethodMap, err error) {
+func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkgs []*packages.Package, idx int, verbose bool) (_ MethodMap, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if d, ok := r.(derr); ok {
@@ -121,6 +126,7 @@ func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkg *packages.Package, 
 		}
 	}()
 
+	pkg := pkgs[idx]
 	obj, ok := pkg.TypesInfo.Defs[name]
 	if !ok {
 		return nil, fmt.Errorf("no def found")
@@ -143,6 +149,11 @@ func AnalyzeParam(name *ast.Ident, fndecl *ast.FuncDecl, pkg *packages.Package, 
 			return nil, nil
 		}
 	}
+
+	if false && len(a.methods) > 0 {
+		findMatchingNamedInterface(pkgs, a.methods, name.Name, fndecl.Name.Name)
+	}
+
 	return a.methods, nil
 }
 
@@ -876,4 +887,67 @@ func getIdent(expr ast.Expr) *ast.Ident {
 	default:
 		return nil
 	}
+}
+
+func findMatchingNamedInterface(pkgs []*packages.Package, mm MethodMap, paramName, fnName string) {
+	if found := findMatchingNamedInterfaceHelper(pkgs, mm, set.New[*packages.Package]()); found != nil {
+		fmt.Printf("xxx param %s, func %s: found matching interface %s\n", paramName, fnName, found.Name.Name)
+	}
+}
+
+func findMatchingNamedInterfaceHelper(pkgs []*packages.Package, mm MethodMap, seen set.Of[*packages.Package]) *ast.TypeSpec {
+	for _, pkg := range pkgs {
+		if found := findMatchingNamedInterfaceInPkg(pkg, mm, seen); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+func findMatchingNamedInterfaceInPkg(pkg *packages.Package, mm MethodMap, seen set.Of[*packages.Package]) *ast.TypeSpec {
+	if seen.Has(pkg) {
+		return nil
+	}
+	seen.Add(pkg)
+
+	for _, file := range pkg.Syntax {
+		for _, decl := range file.Decls {
+			gendecl, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			if gendecl.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range gendecl.Specs {
+				typespec, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					// Should be impossible.
+					continue
+				}
+				obj := pkg.TypesInfo.Defs[typespec.Name]
+				if obj == nil {
+					// Should be impossible.
+					continue
+				}
+				intf := getInterface(obj.Type())
+				if intf == nil {
+					continue
+				}
+				mmm := make(MethodMap)
+				addMethodsToMap(intf, mmm)
+				if reflect.DeepEqual(mm, mmm) {
+					return typespec
+				}
+			}
+		}
+	}
+
+	for _, ipkg := range pkg.Imports {
+		if found := findMatchingNamedInterfaceInPkg(ipkg, mm, seen); found != nil {
+			return found
+		}
+	}
+
+	return nil
 }
