@@ -56,14 +56,22 @@ func main() {
 		params := maps.Keys(tuple.M)
 		sort.Strings(params)
 		for _, param := range params {
-			methods := maps.Keys(tuple.M[param])
-			if len(methods) == 0 {
+			mm := tuple.M[param]
+			if len(mm) == 0 {
 				continue
 			}
+
 			if !showedFuncName {
 				fmt.Printf("%s: %s\n", tuple.P, tuple.F.Name.Name)
 				showedFuncName = true
 			}
+
+			if intfName := checker.NameForMethodSet(mm); intfName != "" {
+				fmt.Printf("    %s: %s\n", param, intfName)
+				continue
+			}
+
+			methods := maps.Keys(tuple.M[param])
 			sort.Strings(methods)
 			fmt.Printf("    %s: %v\n", param, methods)
 		}

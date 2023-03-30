@@ -216,6 +216,15 @@ func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *
 	return a.methods, nil
 }
 
+func (ch Checker) NameForMethodSet(inp MethodMap) string {
+	for name, mm := range ch.namedInterfaces {
+		if sameMethodMaps(mm, inp) {
+			return name
+		}
+	}
+	return ""
+}
+
 type funcDeclOrLit struct {
 	decl *ast.FuncDecl
 	lit  *ast.FuncLit
@@ -959,4 +968,20 @@ func isInternal(path string) bool {
 		return true
 	}
 	return strings.Contains(path, "/internal/")
+}
+
+func sameMethodMaps(a, b MethodMap) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for name, asig := range a {
+		bsig, ok := b[name]
+		if !ok {
+			return false
+		}
+		if !types.Identical(asig, bsig) {
+			return false
+		}
+	}
+	return true
 }
