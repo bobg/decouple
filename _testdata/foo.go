@@ -154,3 +154,23 @@ func F19(f funcErface) ([]byte, error) {
 	f()
 	return io.ReadAll(f)
 }
+
+func F20(r *os.File) func([]byte) (int, error) {
+	return r.Read
+}
+
+func F21(f *os.File) map[*os.File]int {
+	return map[*os.File]int{f: 0}
+}
+
+func F22(rc *os.File) map[io.ReadCloser]int {
+	return map[io.ReadCloser]int{rc: 0}
+}
+
+func F23(f *os.File) *os.File {
+	return f
+}
+
+func F24(rc *os.File) io.ReadCloser {
+	return rc
+}
