@@ -13,8 +13,14 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+// PkgMode is the minimal set of bit flags needed for the Config.Mode field of golang.org/x/go/packages
+// for the result to be usable by a Checker.
 const PkgMode = packages.NeedName | packages.NeedFiles | packages.NeedImports | packages.NeedDeps | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo
 
+// Checker is the object that can analyze a directory tree of Go code,
+// or a set of packages loaded with "golang.org/x/go/packages".Load,
+// or a single such package,
+// or a function or function parameter in one.
 type Checker struct {
 	Verbose bool
 
@@ -22,6 +28,9 @@ type Checker struct {
 	namedInterfaces map[string]MethodMap // maps a package-qualified interface-type name to its method set
 }
 
+// NewCheckerFromDir creates a new Checker containing packages loaded
+// (using "golang.org/x/go/packages".Load)
+// from the given directory tree.
 func NewCheckerFromDir(dir string) (Checker, error) {
 	conf := &packages.Config{Dir: dir, Mode: PkgMode}
 	pkgs, err := packages.Load(conf, "./...")
@@ -39,6 +48,9 @@ func NewCheckerFromDir(dir string) (Checker, error) {
 	return NewCheckerFromPackages(pkgs), nil
 }
 
+// NewCheckerFromPackages creates a new Checker containing the given packages,
+// which should be the result of calling "golang.org/x/go/packages".Load
+// with at least the bits in PkgMode set in the Config.Mode field.
 func NewCheckerFromPackages(pkgs []*packages.Package) Checker {
 	var (
 		namedInterfaces = make(map[string]MethodMap)
@@ -109,7 +121,7 @@ func findNamedInterfaces(pkg *packages.Package, seen set.Of[*packages.Package], 
 // It analyzes the functions in them,
 // looking for parameters with concrete types that could be interfaces instead.
 // The result is a list of Tuples,
-// one for each function checked that has eligible parameters.
+// one for each function checked that has parameters eligible for decoupling.
 func (ch Checker) Check() ([]Tuple, error) {
 	var result []Tuple
 
@@ -124,6 +136,10 @@ func (ch Checker) Check() ([]Tuple, error) {
 	return result, nil
 }
 
+// CheckPackage checks a single package.
+// It should be one of the packages contained in the Checker.
+// The result is a list of Tuples,
+// one for each function checked that has parameters eligible for decoupling.
 func (ch Checker) CheckPackage(pkg *packages.Package) ([]Tuple, error) {
 	var result []Tuple
 
@@ -142,7 +158,7 @@ func (ch Checker) CheckPackage(pkg *packages.Package) ([]Tuple, error) {
 			}
 			result = append(result, Tuple{
 				F: fndecl,
-				P: pkg.Fset.Position(fndecl.Name.Pos()),
+				P: pkg,
 				M: m,
 			})
 		}
@@ -151,14 +167,32 @@ func (ch Checker) CheckPackage(pkg *packages.Package) ([]Tuple, error) {
 	return result, nil
 }
 
+// Tuple is the type of a result from Checker.Check and Checker.CheckPackage.
 type Tuple struct {
+	// F is the function declaration that this result is about.
 	F *ast.FuncDecl
-	P token.Position
+
+	// P is the package in which the function declaration appears.
+	P *packages.Package
+
+	// M is a map from the names of function parameters eligible for decoupling
+	// to MethodMaps for each such parameter.
 	M map[string]MethodMap
 }
 
+// Pos computes the filename and offset
+// of the function name of the Tuple.
+func (t Tuple) Pos() token.Position {
+	return t.P.Fset.Position(t.F.Name.Pos())
+}
+
+// MethodMap maps a set of method names to their calling signatures.
 type MethodMap = map[string]*types.Signature
 
+// CheckFunc checks a single function declaration,
+// which should appear in the given package,
+// which should be one of the packages contained in the Checker.
+// The result is a map from parameter names eligible for decoupling to MethodMaps.
 func (ch Checker) CheckFunc(pkg *packages.Package, fndecl *ast.FuncDecl) (map[string]MethodMap, error) {
 	result := make(map[string]MethodMap)
 	for _, field := range fndecl.Type.Params.List {
@@ -179,6 +213,11 @@ func (ch Checker) CheckFunc(pkg *packages.Package, fndecl *ast.FuncDecl) (map[st
 	return result, nil
 }
 
+// CheckParam checks a single named parameter in a given function declaration,
+// which must apepar in the given package,
+// which should be one of the packages in the Checker.
+// The result is a MethodMap for the parameter,
+// and may be nil if the parameter is not eligible for decoupling.
 func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *ast.Ident) (_ MethodMap, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -216,7 +255,12 @@ func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *
 	return a.methods, nil
 }
 
-func (ch Checker) NameForMethodSet(inp MethodMap) string {
+// NameForMethods takes a MethodMap
+// and returns the name of an interface defining exactly the methods in it,
+// if it can find one among the packages in the Checker.
+// If there are multiple such interfaces,
+// one is chosen arbitrarily.
+func (ch Checker) NameForMethods(inp MethodMap) string {
 	for name, mm := range ch.namedInterfaces {
 		if sameMethodMaps(mm, inp) {
 			return name

@@ -41,13 +41,14 @@ func main() {
 	}
 
 	sort.Slice(tuples, func(i, j int) bool {
-		if tuples[i].P.Filename < tuples[j].P.Filename {
+		iPos, jPos := tuples[i].Pos(), tuples[j].Pos()
+		if iPos.Filename < jPos.Filename {
 			return true
 		}
-		if tuples[i].P.Filename > tuples[j].P.Filename {
+		if iPos.Filename > jPos.Filename {
 			return false
 		}
-		return tuples[i].P.Offset < tuples[j].P.Offset
+		return iPos.Offset < jPos.Offset
 	})
 
 	for _, tuple := range tuples {
@@ -62,11 +63,11 @@ func main() {
 			}
 
 			if !showedFuncName {
-				fmt.Printf("%s: %s\n", tuple.P, tuple.F.Name.Name)
+				fmt.Printf("%s: %s\n", tuple.Pos(), tuple.F.Name.Name)
 				showedFuncName = true
 			}
 
-			if intfName := checker.NameForMethodSet(mm); intfName != "" {
+			if intfName := checker.NameForMethods(mm); intfName != "" {
 				fmt.Printf("    %s: %s\n", param, intfName)
 				continue
 			}
