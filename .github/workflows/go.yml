@@ -30,7 +30,7 @@ jobs:
 
       - name: Modver
         if: ${{ github.event_name == 'pull_request' }}
-        uses: bobg/modver@1ceedfc7eb4bb3a7908c6571a1db765c27d2cde3
+        uses: bobg/modver@f76d72a906fb0ce563ef93d1eeb1d8415df9cde1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           pull_request_url: https://github.com/${{ github.repository }}/pull/${{ github.event.number }}
