@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   test:
@@ -27,3 +27,10 @@ jobs:
         uses: shogo82148/actions-goveralls@v1
         with:
           path-to-profile: cover.out
+
+      - name: Modver
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: bobg/modver@v2.5.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          pull_request_url: https://github.com/${{ github.repository }}/pull/${{ github.event.number }}
