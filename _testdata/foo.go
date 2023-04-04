@@ -174,3 +174,29 @@ func F23(f *os.File) *os.File {
 func F24(rc *os.File) io.ReadCloser {
 	return rc
 }
+
+func F25(r *os.File) ([]byte, error) {
+	return func() ([]byte, error) {
+		return io.ReadAll(r)
+	}()
+}
+
+func F26(f *os.File) io.Reader {
+	return func() *os.File {
+		return f
+	}()
+}
+
+func F27(r *os.File) (data []byte, err error) {
+	ch := make(chan struct{})
+	go func() {
+		data, err = io.ReadAll(r)
+		close(ch)
+	}()
+	<-ch
+	return
+}
+
+func F28(r *os.File) map[int]io.Reader {
+	return map[int]io.Reader{7: r}
+}

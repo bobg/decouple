@@ -58,21 +58,41 @@ func TestAnalyze(t *testing.T) {
 								if err != nil {
 									t.Fatal(err)
 								}
-								gotMethodNames := set.New[string](maps.Keys(got)...)
+								var (
+									gotMethodNames = set.New[string](maps.Keys(got)...)
+									methodSetName  = checker.NameForMethods(got)
+								)
 								switch name.Name {
 								case "r":
 									if !gotMethodNames.Equal(readerMethods) {
 										t.Errorf("got %v, want %v", got, readerMethods)
+									}
+									switch methodSetName {
+									case "":
+										t.Error("did not find a name for this method set")
+									case "io.Reader": // ok
+									default:
+										t.Errorf("got %s for this method set, want io.Reader", methodSetName)
 									}
 
 								case "rc":
 									if !gotMethodNames.Equal(readerCloserMethods) {
 										t.Errorf("got %v, want %v", got, readerCloserMethods)
 									}
+									switch methodSetName {
+									case "":
+										t.Error("did not find a name for this method set")
+									case "io.ReadCloser": // ok
+									default:
+										t.Errorf("got %s for this method set, want io.Reader", methodSetName)
+									}
 
 								default:
 									if gotMethodNames.Len() > 0 {
 										t.Errorf("got %v, want nil", got)
+									}
+									if methodSetName != "" {
+										t.Errorf("got %s for this method set, want no name", methodSetName)
 									}
 								}
 							})
