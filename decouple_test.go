@@ -13,7 +13,7 @@ import (
 	// "github.com/davecgh/go-spew/spew"
 )
 
-func TestAnalyze(t *testing.T) {
+func TestCheckParam(t *testing.T) {
 	ctx := context.Background()
 
 	conf := &packages.Config{

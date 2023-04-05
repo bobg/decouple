@@ -349,21 +349,27 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 		}
 		for i, rhs := range stmt.Rhs {
 			// xxx do a recursive analysis of how this var is used!
-			if a.isObj(rhs) && stmt.Tok != token.DEFINE {
-				if stmt.Tok != token.ASSIGN {
-					// Reject OP=
+			if a.isObj(rhs) {
+				switch stmt.Tok {
+				case token.DEFINE:
+					continue
+
+				case token.ASSIGN:
+					tv, ok := a.pkg.TypesInfo.Types[stmt.Lhs[i]]
+					if !ok {
+						panic(errf("no type info for lvalue %d in assignment at %s", i, a.pos(stmt)))
+					}
+					intf := getInterface(tv.Type)
+					if intf == nil {
+						return false
+					}
+					a.addMethods(intf)
+					continue
+
+				default:
+					// Reject OP= (e.g., foo += obj)
 					return false
 				}
-				tv, ok := a.pkg.TypesInfo.Types[stmt.Lhs[i]]
-				if !ok {
-					panic(errf("no type info for lvalue %d in assignment at %s", i, a.pos(stmt)))
-				}
-				intf := getInterface(tv.Type)
-				if intf == nil {
-					return false
-				}
-				a.addMethods(intf)
-				continue
 			}
 			if !a.expr(rhs) {
 				return false
