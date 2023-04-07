@@ -200,3 +200,30 @@ func F27(r *os.File) (data []byte, err error) {
 func F28(r *os.File) map[int]io.Reader {
 	return map[int]io.Reader{7: r}
 }
+
+func F29(r *os.File) ([]byte, error) {
+	s := struct {
+		rd io.Reader
+	}{rd: r}
+	return io.ReadAll(s.rd)
+}
+
+func F30(f *os.File) ([]byte, error) {
+	s := struct {
+		file *os.File
+	}{file: f}
+	return io.ReadAll(s.file)
+}
+
+func F31(r *os.File) ([]byte, error) {
+	fn := func(readers ...io.Reader) ([]byte, error) {
+		for _, reader := range readers {
+			if reader != nil {
+				return io.ReadAll(reader)
+			}
+		}
+		return nil, nil
+	}
+
+	return fn(nil, r)
+}
