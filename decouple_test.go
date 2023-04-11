@@ -40,6 +40,8 @@ func TestAnalyze(t *testing.T) {
 		readerCloserMethods = set.New[string]("Read", "Close")
 	)
 
+	checker.Interfaces = true
+
 	for _, pkg := range pkgs {
 		for _, file := range pkg.Syntax {
 			for _, decl := range file.Decls {
@@ -50,9 +52,11 @@ func TestAnalyze(t *testing.T) {
 				t.Run(fndecl.Name.Name, func(t *testing.T) {
 					for _, field := range fndecl.Type.Params.List {
 						for _, name := range field.Names {
-							if name.Name == "_" {
+							switch name.Name {
+							case "_", "ctx":
 								continue
 							}
+
 							t.Run(name.Name, func(t *testing.T) {
 								got, err := checker.CheckParam(pkg, fndecl, name)
 								if err != nil {

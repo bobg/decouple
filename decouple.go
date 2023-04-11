@@ -21,8 +21,12 @@ const PkgMode = packages.NeedName | packages.NeedFiles | packages.NeedImports | 
 // or a set of packages loaded with "golang.org/x/go/packages".Load,
 // or a single such package,
 // or a function or function parameter in one.
+//
+// Set Verbose to true to get (very) verbose debugging output.
+// Set Interfaces to true to check function parameters with interface types.
+// (An interface-typed function parameter can be decoupled if a smaller interface will suffice.)
 type Checker struct {
-	Verbose bool
+	Verbose, Interfaces bool
 
 	pkgs            []*packages.Package
 	namedInterfaces map[string]MethodMap // maps a package-qualified interface-type name to its method set
@@ -233,14 +237,23 @@ func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *
 	if !ok {
 		return nil, fmt.Errorf("no def found for %s", name.Name)
 	}
-	if intf := getInterface(obj.Type()); intf != nil {
-		// TODO: see whether this param can be a smaller interface?
-		return nil, nil
+
+	var (
+		intf = getInterface(obj.Type())
+		mm   MethodMap
+	)
+	if intf != nil {
+		if !ch.Interfaces {
+			return nil, nil
+		}
+		mm = make(MethodMap)
+		addMethodsToMap(intf, mm)
 	}
 	a := analyzer{
 		name:          name,
 		obj:           obj,
 		pkg:           pkg,
+		objmethods:    mm,
 		methods:       make(MethodMap),
 		enclosingFunc: &funcDeclOrLit{decl: fndecl},
 		debug:         ch.Verbose,
@@ -252,6 +265,13 @@ func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *
 		}
 	}
 
+	if len(a.objmethods) > 1 {
+		if len(a.methods) < len(a.objmethods) {
+			// A smaller interface will do.
+			return a.methods, nil
+		}
+		return nil, nil
+	}
 	return a.methods, nil
 }
 
@@ -275,10 +295,14 @@ type funcDeclOrLit struct {
 }
 
 type analyzer struct {
-	name    *ast.Ident
-	obj     types.Object
-	pkg     *packages.Package
-	methods MethodMap
+	name *ast.Ident
+	obj  types.Object
+	pkg  *packages.Package
+
+	// objmethods is input: the methodmap for obj's type,
+	// if that's an interface type.
+	// methods is output: the set of methods actually used.
+	objmethods, methods MethodMap
 
 	enclosingFunc       *funcDeclOrLit
 	enclosingSwitchStmt *ast.SwitchStmt

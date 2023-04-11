@@ -12,8 +12,9 @@ import (
 )
 
 func main() {
-	var verbose bool
+	var verbose, interfaces bool
 	flag.BoolVar(&verbose, "v", false, "verbose")
+	flag.BoolVar(&interfaces, "interfaces", false, "check interface-typed function parameters too")
 	flag.Parse()
 
 	var dir string
@@ -33,6 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 	checker.Verbose = verbose
+	checker.Interfaces = interfaces
 
 	tuples, err := checker.Check()
 	if err != nil {

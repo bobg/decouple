@@ -200,3 +200,12 @@ func F27(r *os.File) (data []byte, err error) {
 func F28(r *os.File) map[int]io.Reader {
 	return map[int]io.Reader{7: r}
 }
+
+func F29(r io.ReadCloser) ([]byte, error) {
+	return io.ReadAll(r)
+}
+
+func F30(x io.ReadCloser) ([]byte, error) {
+	defer x.Close()
+	return io.ReadAll(x)
+}
