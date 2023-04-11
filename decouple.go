@@ -265,7 +265,7 @@ func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *
 		}
 	}
 
-	if len(a.objmethods) > 1 {
+	if len(a.objmethods) > 0 {
 		if len(a.methods) < len(a.objmethods) {
 			// A smaller interface will do.
 			return a.methods, nil
