@@ -24,10 +24,8 @@ const PkgMode = packages.NeedName | packages.NeedFiles | packages.NeedImports | 
 // or a function or function parameter in one.
 //
 // Set Verbose to true to get (very) verbose debugging output.
-// Set Interfaces to true to check function parameters with interface types.
-// (An interface-typed function parameter can be decoupled if a smaller interface will suffice.)
 type Checker struct {
-	Verbose, Interfaces bool
+	Verbose bool
 
 	pkgs            []*packages.Package
 	namedInterfaces map[string]MethodMap // maps a package-qualified interface-type name to its method set
@@ -158,9 +156,6 @@ func (ch Checker) CheckPackage(pkg *packages.Package) ([]Tuple, error) {
 			if err != nil {
 				return nil, errors.Wrapf(err, "analyzing function %s at %s", fndecl.Name.Name, pkg.Fset.Position(fndecl.Name.Pos()))
 			}
-			if len(m) == 0 {
-				continue
-			}
 			result = append(result, Tuple{
 				F: fndecl,
 				P: pkg,
@@ -244,9 +239,6 @@ func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *
 		mm   MethodMap
 	)
 	if intf != nil {
-		if !ch.Interfaces {
-			return nil, nil
-		}
 		mm = make(MethodMap)
 		addMethodsToMap(intf, mm)
 	}
