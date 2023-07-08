@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/bobg/decouple.svg)](https://pkg.go.dev/github.com/bobg/decouple)
 [![Go Report Card](https://goreportcard.com/badge/github.com/bobg/decouple)](https://goreportcard.com/report/github.com/bobg/decouple)
 [![Tests](https://github.com/bobg/decouple/actions/workflows/go.yml/badge.svg)](https://github.com/bobg/decouple/actions/workflows/go.yml)
-[![Coverage Status](https://coveralls.io/repos/github/bobg/decouple/badge.svg?branch=master)](https://coveralls.io/github/bobg/decouple?branch=master)
+[![Coverage Status](https://coveralls.io/repos/github/bobg/decouple/badge.svg?branch=main)](https://coveralls.io/github/bobg/decouple?branch=main)
 
 This is decouple,
 a Go package and command that analyzes your Go code
@@ -64,7 +64,7 @@ With -v,
 very verbose debugging output is printed along the way.
 
 The report will be empty if decouple has no findings.
-Otherwise, a report will look something like this:
+Otherwise, it will look something like this:
 
 ```
 $ decouple
@@ -85,9 +85,10 @@ of [kodigcs](https://github.com/bobg/kodigcs).
 It’s saying that:
 
 - In the function [handleDir](https://github.com/bobg/kodigcs/blob/f4e8cf0e44de0ea98fa7ad4f88705324ff446444/handle.go#L105),
-  The `req` parameter is being used only for its `Context` method
+  the `req` parameter is being used only for its `Context` method
   and so could be declared as `interface{ Context() context.Context }`,
-  allowing objects other than `*http.Request` values to be passed in here;
+  allowing objects other than `*http.Request` values to be passed in here
+  (or, better still, the function could be rewritten to take a `context.Context` parameter instead);
 - Also in [handleDir](https://github.com/bobg/kodigcs/blob/f4e8cf0e44de0ea98fa7ad4f88705324ff446444/handle.go#L105),
   `w` could be an `io.Writer`,
   allowing more types to be used than just `http.ResponseWriter`;
