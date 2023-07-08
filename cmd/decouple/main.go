@@ -6,15 +6,14 @@ import (
 	"os"
 	"sort"
 
-	"github.com/bobg/go-generics/maps"
+	"github.com/bobg/go-generics/v2/maps"
 
 	"github.com/bobg/decouple"
 )
 
 func main() {
-	var verbose, interfaces bool
+	var verbose bool
 	flag.BoolVar(&verbose, "v", false, "verbose")
-	flag.BoolVar(&interfaces, "interfaces", false, "check interface-typed function parameters too")
 	flag.Parse()
 
 	var dir string
@@ -34,7 +33,6 @@ func main() {
 		os.Exit(1)
 	}
 	checker.Verbose = verbose
-	checker.Interfaces = interfaces
 
 	tuples, err := checker.Check()
 	if err != nil {

@@ -1,109 +1,101 @@
 package decouple
 
 import (
-	"context"
-	"go/ast"
+	"bytes"
+	"encoding/json"
+	"go/types"
+	"strings"
 	"testing"
 
-	"github.com/bobg/go-generics/maps"
-	"github.com/bobg/go-generics/set"
-	"github.com/pkg/errors"
-	"go.uber.org/multierr"
-	"golang.org/x/tools/go/packages"
+	"github.com/bobg/go-generics/v2/maps"
+	"github.com/bobg/go-generics/v2/set"
 	// "github.com/davecgh/go-spew/spew"
 )
 
-func TestAnalyze(t *testing.T) {
-	ctx := context.Background()
-
-	conf := &packages.Config{
-		Context: ctx,
-		Dir:     "_testdata",
-		Mode:    PkgMode,
-	}
-	pkgs, err := packages.Load(conf, "./...")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, pkg := range pkgs {
-		for _, pkgerr := range pkg.Errors {
-			err = multierr.Append(err, errors.Wrapf(pkgerr, "in package %s", pkg.PkgPath))
-		}
-	}
+func TestCheck(t *testing.T) {
+	checker, err := NewCheckerFromDir("_testdata")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var (
-		checker             = NewCheckerFromPackages(pkgs)
-		readerMethods       = set.New[string]("Read")
-		readerCloserMethods = set.New[string]("Read", "Close")
-	)
+	// if testing.Verbose() {
+	// 	checker.Verbose = true
+	// }
 
-	checker.Interfaces = true
+	tuples, err := checker.Check()
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	for _, pkg := range pkgs {
-		for _, file := range pkg.Syntax {
-			for _, decl := range file.Decls {
-				fndecl, ok := decl.(*ast.FuncDecl)
-				if !ok {
-					continue
-				}
-				t.Run(fndecl.Name.Name, func(t *testing.T) {
-					for _, field := range fndecl.Type.Params.List {
-						for _, name := range field.Names {
-							switch name.Name {
-							case "_", "ctx":
-								continue
+	for _, tuple := range tuples {
+		t.Run(tuple.F.Name.Name, func(t *testing.T) {
+			if tuple.F.Doc == nil {
+				t.Fatal("no doc")
+			}
+			var docb bytes.Buffer
+			for _, c := range tuple.F.Doc.List {
+				docb.WriteString(strings.TrimLeft(c.Text, "/"))
+				docb.WriteByte('\n')
+			}
+
+			var (
+				dec = json.NewDecoder(&docb)
+				pre map[string]map[string]string
+			)
+			if err := dec.Decode(&pre); err != nil {
+				t.Fatalf("unmarshaling `%s`: %s", docb.String(), err)
+			}
+
+			var (
+				gotParamNames  = set.New(maps.Keys(tuple.M)...)
+				wantParamNames = set.New(maps.Keys(pre)...)
+			)
+			if !gotParamNames.Equal(wantParamNames) {
+				t.Fatalf("got param names %v, want %v", gotParamNames.Slice(), wantParamNames.Slice())
+			}
+
+			for paramName, methods := range pre {
+				t.Run(paramName, func(t *testing.T) {
+					var (
+						gotMethodNames  = set.New(maps.Keys(tuple.M[paramName])...)
+						wantMethodNames = set.New(maps.Keys(methods)...)
+					)
+					if !gotMethodNames.Equal(wantMethodNames) {
+						t.Fatalf("got method names %v, want %v", gotMethodNames.Slice(), wantMethodNames.Slice())
+					}
+					for methodName, sigstr := range methods {
+						t.Run(methodName, func(t *testing.T) {
+							typ, err := types.Eval(tuple.P.Fset, tuple.P.Types, tuple.F.Pos(), sigstr)
+							if err != nil {
+								t.Fatal(err)
 							}
-
-							t.Run(name.Name, func(t *testing.T) {
-								got, err := checker.CheckParam(pkg, fndecl, name)
-								if err != nil {
-									t.Fatal(err)
-								}
-								var (
-									gotMethodNames = set.New[string](maps.Keys(got)...)
-									methodSetName  = checker.NameForMethods(got)
-								)
-								switch name.Name {
-								case "r":
-									if !gotMethodNames.Equal(readerMethods) {
-										t.Errorf("got %v, want %v", got, readerMethods)
-									}
-									switch methodSetName {
-									case "":
-										t.Error("did not find a name for this method set")
-									case "io.Reader": // ok
-									default:
-										t.Errorf("got %s for this method set, want io.Reader", methodSetName)
-									}
-
-								case "rc":
-									if !gotMethodNames.Equal(readerCloserMethods) {
-										t.Errorf("got %v, want %v", got, readerCloserMethods)
-									}
-									switch methodSetName {
-									case "":
-										t.Error("did not find a name for this method set")
-									case "io.ReadCloser": // ok
-									default:
-										t.Errorf("got %s for this method set, want io.Reader", methodSetName)
-									}
-
-								default:
-									if gotMethodNames.Len() > 0 {
-										t.Errorf("got %v, want nil", got)
-									}
-									if methodSetName != "" {
-										t.Errorf("got %s for this method set, want no name", methodSetName)
-									}
-								}
-							})
-						}
+							if !types.Identical(tuple.M[paramName][methodName], typ.Type) {
+								t.Errorf("got %s, want %s", tuple.M[paramName][methodName], typ.Type)
+							}
+						})
 					}
 				})
 			}
-		}
+
+			if !dec.More() {
+				return
+			}
+
+			t.Run("intf", func(t *testing.T) {
+				var intfnames map[string]string
+				if err := dec.Decode(&intfnames); err != nil {
+					t.Fatalf("unmarshaling interface names: %s", err)
+				}
+
+				for paramName, intfname := range intfnames {
+					t.Run(paramName, func(t *testing.T) {
+						got := checker.NameForMethods(tuple.M[paramName])
+						if got != intfname {
+							t.Errorf("got %s, want %s", got, intfname)
+						}
+					})
+				}
+			})
+		})
 	}
 }
