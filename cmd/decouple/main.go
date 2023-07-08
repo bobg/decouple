@@ -6,7 +6,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/bobg/go-generics/maps"
+	"github.com/bobg/go-generics/v2/maps"
 
 	"github.com/bobg/decouple"
 )

@@ -3,10 +3,13 @@ package decouple
 import (
 	"context"
 	"go/ast"
+	"go/token"
+	"go/types"
+	"strings"
 	"testing"
 
-	"github.com/bobg/go-generics/maps"
-	"github.com/bobg/go-generics/set"
+	"github.com/bobg/go-generics/v2/maps"
+	"github.com/bobg/go-generics/v2/set"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"golang.org/x/tools/go/packages"
@@ -18,7 +21,7 @@ func TestAnalyze(t *testing.T) {
 
 	conf := &packages.Config{
 		Context: ctx,
-		Dir:     "_testdata",
+		Dir:     "_testdata/m",
 		Mode:    PkgMode,
 	}
 	pkgs, err := packages.Load(conf, "./...")
@@ -103,6 +106,79 @@ func TestAnalyze(t *testing.T) {
 						}
 					}
 				})
+			}
+		}
+	}
+}
+
+func TestA(t *testing.T) {
+	checker, err := NewCheckerFromDir("_testdata/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checker.Interfaces = true
+
+	tuples, err := checker.Check()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		fsets = make(map[string]*token.FileSet)
+		pkgs  = make(map[string]*types.Package)
+		poss  = make(map[string]token.Pos)
+	)
+
+	got := make(map[string]map[string]MethodMap)
+	for _, tuple := range tuples {
+		keyparts := []string{tuple.P.PkgPath}
+		if tuple.F.Recv != nil && len(tuple.F.Recv.List) > 0 {
+			recv := tuple.F.Recv.List[0].Type
+			if info := tuple.P.TypesInfo.Types[recv]; info.Type != nil {
+				keyparts = append(keyparts, types.TypeString(info.Type, types.RelativeTo(tuple.P.Types)))
+			}
+		}
+		keyparts = append(keyparts, tuple.F.Name.Name)
+		key := strings.Join(keyparts, ".")
+		got[key] = tuple.M
+
+		fsets[key] = tuple.P.Fset
+		pkgs[key] = tuple.P.Types
+		poss[key] = tuple.F.Pos()
+	}
+
+	want := map[string]map[string]map[string]string{
+		"a.X": {
+			"r": {
+				"Read": "func([]byte) (int, error)",
+			},
+		},
+	}
+
+	for k, v := range want {
+		fset, ok := fsets[k]
+		if !ok {
+			t.Fatalf("no fset for %s", k)
+		}
+		pkg, ok := pkgs[k]
+		if !ok {
+			t.Fatalf("no pkg for %s", k)
+		}
+		pos, ok := poss[k]
+		if !ok {
+			t.Fatalf("no pos for %s", k)
+		}
+
+		for paramname, methods := range v {
+			for methodname, sigstr := range methods {
+				typ, err := types.Eval(fset, pkg, pos, sigstr)
+				if err != nil {
+					t.Fatalf("%s %s %s: %s", k, paramname, methodname, err)
+				}
+				if !types.Identical(got[k][paramname][methodname], typ.Type) {
+					t.Errorf("%s %s %s: got %s, want %s", k, paramname, methodname, got[k][paramname][methodname], typ.Type)
+				}
 			}
 		}
 	}

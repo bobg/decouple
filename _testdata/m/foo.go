@@ -209,3 +209,8 @@ func F30(x io.ReadCloser) ([]byte, error) {
 	defer x.Close()
 	return io.ReadAll(x)
 }
+
+func F31(r *os.File) io.Reader {
+	x := []io.Reader{r}
+	return x[0]
+}

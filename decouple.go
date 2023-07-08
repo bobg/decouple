@@ -7,7 +7,8 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/bobg/go-generics/set"
+	"github.com/bobg/go-generics/v2/set"
+	"github.com/bobg/go-generics/v2/slices"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"golang.org/x/tools/go/packages"
@@ -1026,16 +1027,8 @@ func getIdent(expr ast.Expr) *ast.Ident {
 }
 
 func isInternal(path string) bool {
-	if path == "internal" {
-		return true
-	}
-	if strings.HasPrefix(path, "internal/") {
-		return true
-	}
-	if strings.HasSuffix(path, "/internal") {
-		return true
-	}
-	return strings.Contains(path, "/internal/")
+	parts := strings.Split(path, "/")
+	return slices.Contains(parts, "internal")
 }
 
 func sameMethodMaps(a, b MethodMap) bool {
