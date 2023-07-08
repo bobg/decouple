@@ -2,6 +2,7 @@ package m
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 )
@@ -154,6 +155,15 @@ func F17(r *os.File) ([]byte, error) {
 	return io.ReadAll(r)
 }
 
+// {"r": {"Read": "func([]byte) (int, error)"}}
+func F17b(r *os.File) ([]byte, error) {
+	var x io.Reader
+	if x == r {
+		return nil, nil
+	}
+	return io.ReadAll(r)
+}
+
 // {}
 func F18(f *os.File) ([]byte, error) {
 	if f == nil {
@@ -249,3 +259,48 @@ func F31(r *os.File) io.Reader {
 
 // {}
 func F32(_ io.Reader) {}
+
+// {}
+func F33(ch <-chan *os.File) ([]byte, error) {
+	r := <-ch
+	return io.ReadAll(r)
+}
+
+// {}
+func F34(r *os.File, ch chan<- *os.File) ([]byte, error) {
+	ch <- r
+	return io.ReadAll(r)
+}
+
+// {"x": {"foo": "func()"}}
+// {"x": ""}
+func F35(x interface {
+	foo()
+	bar()
+}) {
+	x.foo()
+}
+
+// {}
+func F36(w io.Writer, inps []*os.File) error {
+	for _, inp := range inps {
+		if _, err := io.Copy(w, inp); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// {}
+func F37(r io.Reader) ([]byte, error) {
+	switch r := r.(type) {
+	case *os.File:
+		fmt.Println(r.Name())
+	}
+	return io.ReadAll(r)
+}
+
+// {}
+func F38(x int) int {
+	return x + 1
+}

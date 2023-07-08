@@ -79,19 +79,22 @@ func TestCheck(t *testing.T) {
 			if !dec.More() {
 				return
 			}
-			var intfnames map[string]string
-			if err := dec.Decode(&intfnames); err != nil {
-				t.Fatalf("unmarshaling interface names: %s", err)
-			}
 
-			for paramName, intfname := range intfnames {
-				t.Run("intf-"+paramName, func(t *testing.T) {
-					got := checker.NameForMethods(tuple.M[paramName])
-					if got != intfname {
-						t.Errorf("got %s, want %s", got, intfname)
-					}
-				})
-			}
+			t.Run("intf", func(t *testing.T) {
+				var intfnames map[string]string
+				if err := dec.Decode(&intfnames); err != nil {
+					t.Fatalf("unmarshaling interface names: %s", err)
+				}
+
+				for paramName, intfname := range intfnames {
+					t.Run(paramName, func(t *testing.T) {
+						got := checker.NameForMethods(tuple.M[paramName])
+						if got != intfname {
+							t.Errorf("got %s, want %s", got, intfname)
+						}
+					})
+				}
+			})
 		})
 	}
 }
