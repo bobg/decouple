@@ -18,6 +18,10 @@ func TestCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if testing.Verbose() {
+		checker.Verbose = true
+	}
+
 	tuples, err := checker.Check()
 	if err != nil {
 		t.Fatal(err)

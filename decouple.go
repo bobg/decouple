@@ -840,7 +840,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 			// In expression x[index],
 			// index can be an interface
 			// if x is a map.
-			tv, ok := a.pkg.TypesInfo.Types[expr]
+			tv, ok := a.pkg.TypesInfo.Types[expr.X]
 			if !ok {
 				panic(errf("no type info for index expression at %s", a.pos(expr)))
 			}

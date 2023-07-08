@@ -304,3 +304,33 @@ func F37(r io.Reader) ([]byte, error) {
 func F38(x int) int {
 	return x + 1
 }
+
+// {"r": {"Read": "func([]byte) (int, error)"}}
+func F39(r *os.File) ([]byte, error) {
+	m := map[io.Reader]io.Reader{r: r}
+	return io.ReadAll(m[r])
+}
+
+// {}
+func F40[W, R any](w W, r R) error {
+	if w, ok := any(w).(io.Writer); ok {
+		if r, ok := any(r).(io.Reader); ok {
+			_, err := io.Copy(w, r)
+			return err
+		}
+	}
+	return nil
+}
+
+// {}
+func F41(w io.Writer, readers []io.Reader) error {
+	f := func(w io.Writer, readers ...io.Reader) error {
+		for _, r := range readers {
+			if _, err := io.Copy(w, r); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return f(w, readers...)
+}
