@@ -221,11 +221,14 @@ func (ch Checker) CheckFunc(pkg *packages.Package, fndecl *ast.FuncDecl) (map[st
 func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *ast.Ident) (_ MethodMap, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			if d, ok := r.(derr); ok {
-				err = d
-			} else {
-				panic(r)
+			if e, ok := r.(error); ok {
+				var d derr
+				if errors.As(e, &d) {
+					err = d
+					return
+				}
 			}
+			panic(r)
 		}
 	}()
 

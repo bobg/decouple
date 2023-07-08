@@ -18,9 +18,9 @@ func TestCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if testing.Verbose() {
-		checker.Verbose = true
-	}
+	// if testing.Verbose() {
+	// 	checker.Verbose = true
+	// }
 
 	tuples, err := checker.Check()
 	if err != nil {
@@ -44,9 +44,6 @@ func TestCheck(t *testing.T) {
 			)
 			if err := dec.Decode(&pre); err != nil {
 				t.Fatalf("unmarshaling `%s`: %s", docb.String(), err)
-			}
-			if len(pre) == 0 {
-				return
 			}
 
 			var (

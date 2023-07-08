@@ -307,7 +307,8 @@ func F38(x int) int {
 
 // {"r": {"Read": "func([]byte) (int, error)"}}
 func F39(r *os.File) ([]byte, error) {
-	m := map[io.Reader]io.Reader{r: r}
+	type mtype map[io.Reader]io.Reader
+	m := mtype{r: r}
 	return io.ReadAll(m[r])
 }
 
@@ -333,4 +334,28 @@ func F41(w io.Writer, readers []io.Reader) error {
 		return nil
 	}
 	return f(w, readers...)
+}
+
+// {"ctx": {"Done": "func() <-chan struct{}", "Err": "func() error"},
+//  "f": {"Name": "func() string"}}
+func F42(ctx context.Context, f *os.File, ch <-chan struct{}) (string, error) {
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case <-ch:
+		return f.Name(), nil
+	}
+}
+
+// {"f": {"Read": "func([]byte) (int, error)"}}
+func F43(w io.Writer, f *os.File) error {
+	fn := func(readers ...io.Reader) error {
+		for _, r := range readers {
+			if _, err := io.Copy(w, r); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return fn(f)
 }
