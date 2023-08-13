@@ -7,8 +7,8 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/bobg/go-generics/v2/set"
-	"github.com/bobg/go-generics/v2/slices"
+	"github.com/bobg/go-generics/v3/set"
+	"github.com/bobg/go-generics/v3/slices"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 	"golang.org/x/tools/go/packages"

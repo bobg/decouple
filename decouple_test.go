@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bobg/go-generics/v2/maps"
-	"github.com/bobg/go-generics/v2/set"
+	"github.com/bobg/go-generics/v3/maps"
+	"github.com/bobg/go-generics/v3/set"
 	// "github.com/davecgh/go-spew/spew"
 )
 
