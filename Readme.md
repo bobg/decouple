@@ -16,7 +16,7 @@ if it has a more-specific type than it actually needs.
 For example,
 if your function takes a `*os.File` parameter,
 but it’s only ever used for its `Read` method,
-it could be specified as an abstract `io.Reader` instead
+it could be specified as an abstract `io.Reader` instead.
 
 ## Why decouple?
 

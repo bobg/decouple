@@ -102,7 +102,7 @@ func findNamedInterfaces(pkg *packages.Package, seen set.Of[*packages.Package], 
 					// Should be impossible.
 					continue
 				}
-				intf := getInterface(obj.Type())
+				intf := getType[*types.Interface](obj.Type())
 				if intf == nil {
 					continue
 				}
@@ -238,7 +238,7 @@ func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *
 	}
 
 	var (
-		intf = getInterface(obj.Type())
+		intf = getType[*types.Interface](obj.Type())
 		mm   MethodMap
 	)
 	if intf != nil {
@@ -327,7 +327,7 @@ func (a *analyzer) enclosingFuncInfo() (types.Type, token.Position, bool) {
 }
 
 func (a *analyzer) getSig(expr ast.Expr) *types.Signature {
-	return getSig(a.pkg.TypesInfo.Types[expr].Type)
+	return getType[*types.Signature](a.pkg.TypesInfo.Types[expr].Type)
 }
 
 // Does expr denote the object in a?
@@ -378,7 +378,7 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 				if !ok {
 					panic(errf("no type info for lvalue %d in assignment at %s", i, a.pos(stmt)))
 				}
-				intf := getInterface(tv.Type)
+				intf := getType[*types.Interface](tv.Type)
 				if intf == nil {
 					return false
 				}
@@ -527,7 +527,7 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 					panic(errf("cannot return %d value(s) from %d-value-returning function at %s", i+1, sig.Results().Len(), a.pos(stmt)))
 				}
 				resultvar := sig.Results().At(i)
-				intf := getInterface(resultvar.Type())
+				intf := getType[*types.Interface](resultvar.Type())
 				if intf == nil {
 					return false
 				}
@@ -555,11 +555,11 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 			if !ok {
 				panic(errf("no type info for channel in send statement at %s", a.pos(stmt)))
 			}
-			chtyp := getChanType(tv.Type)
+			chtyp := getType[*types.Chan](tv.Type)
 			if chtyp == nil {
 				panic(errf("got %T, want channel for type of channel in send statement at %s", tv.Type, a.pos(stmt)))
 			}
-			intf := getInterface(chtyp.Elem())
+			intf := getType[*types.Interface](chtyp.Elem())
 			if intf == nil {
 				return false
 			}
@@ -634,7 +634,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 				if !ok {
 					panic(errf("no type info for expr at %s", a.pos(other)))
 				}
-				intf := getInterface(tv.Type)
+				intf := getType[*types.Interface](tv.Type)
 				if intf == nil {
 					return false
 				}
@@ -665,7 +665,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 				if !ok {
 					panic(errf("no type info for function in call expression at %s", a.pos(expr)))
 				}
-				sig := getSig(tv.Type)
+				sig := getType[*types.Signature](tv.Type)
 				if sig == nil {
 					// This could be a type conversion expression; e.g. int(x).
 					if len(expr.Args) == 1 {
@@ -690,7 +690,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 				} else {
 					ptype = params.At(i).Type()
 				}
-				intf := getInterface(ptype)
+				intf := getType[*types.Interface](ptype)
 				if intf == nil {
 					return false
 				}
@@ -712,11 +712,11 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 					if !ok {
 						panic(errf("no type info for composite literal at %s", a.pos(expr)))
 					}
-					mapType := getMap(tv.Type)
+					mapType := getType[*types.Map](tv.Type)
 					if mapType == nil {
 						return false
 					}
-					intf := getInterface(mapType.Key())
+					intf := getType[*types.Interface](mapType.Key())
 					if intf == nil {
 						return false
 					}
@@ -768,7 +768,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 						return false
 					}
 
-					intf := getInterface(elemType)
+					intf := getType[*types.Interface](elemType)
 					if intf == nil {
 						return false
 					}
@@ -806,7 +806,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 					elemType = literalType.Elem()
 				}
 
-				intf := getInterface(elemType)
+				intf := getType[*types.Interface](elemType)
 				if intf == nil {
 					return false
 				}
@@ -847,11 +847,11 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 			if !ok {
 				panic(errf("no type info for index expression at %s", a.pos(expr)))
 			}
-			mapType := getMap(tv.Type)
+			mapType := getType[*types.Map](tv.Type)
 			if mapType == nil {
 				return false
 			}
-			intf := getInterface(mapType.Key())
+			intf := getType[*types.Interface](mapType.Key())
 			if intf == nil {
 				return false
 			}
@@ -957,7 +957,7 @@ func (a *analyzer) decl(decl ast.Decl) bool {
 					if !ok {
 						panic(errf("no type info for variable declaration at %s", a.pos(valspec)))
 					}
-					intf := getInterface(tv.Type)
+					intf := getType[*types.Interface](tv.Type)
 					if intf == nil {
 						return false
 					}
