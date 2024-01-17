@@ -7,10 +7,9 @@ import (
 	"go/types"
 	"strings"
 
+	"github.com/bobg/errors"
 	"github.com/bobg/go-generics/v3/set"
 	"github.com/bobg/go-generics/v3/slices"
-	"github.com/pkg/errors"
-	"go.uber.org/multierr"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -42,7 +41,7 @@ func NewCheckerFromDir(dir string) (Checker, error) {
 	}
 	for _, pkg := range pkgs {
 		for _, pkgerr := range pkg.Errors {
-			err = multierr.Append(err, errors.Wrapf(pkgerr, "in package %s", pkg.PkgPath))
+			err = errors.Join(err, errors.Wrapf(pkgerr, "in package %s", pkg.PkgPath))
 		}
 	}
 	if err != nil {

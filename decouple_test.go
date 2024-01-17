@@ -3,6 +3,8 @@ package decouple
 import (
 	"bytes"
 	"encoding/json"
+	"go/ast"
+	"go/token"
 	"go/types"
 	"strings"
 	"testing"
@@ -97,5 +99,25 @@ func TestCheck(t *testing.T) {
 				}
 			})
 		})
+	}
+}
+
+func TestGetIdent(t *testing.T) {
+	var expr ast.Expr = &ast.BasicLit{Kind: token.INT, Value: "42"}
+
+	if ident := getIdent(expr); ident != nil {
+		t.Errorf("got %v, want nil", ident)
+	}
+
+	expr = ast.NewIdent("foo")
+
+	if ident := getIdent(expr); ident == nil || ident.Name != "foo" {
+		t.Errorf("got %v, want foo", ident)
+	}
+
+	expr = &ast.ParenExpr{X: expr}
+
+	if ident := getIdent(expr); ident == nil || ident.Name != "foo" {
+		t.Errorf("got %v, want foo", ident)
 	}
 }
