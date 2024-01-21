@@ -452,20 +452,13 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 		return a.expr(stmt.Call)
 
 	case *ast.ExprStmt:
-		if a.isObj(stmt.X) {
-			// This probably can't happen in a well-formed program.
-			return false
-		}
-		return a.expr(stmt.X)
+		return !a.isObjOrNotExpr(stmt.X) // a.isObj(stmt.X) probably can't happen in a well-formed program.
 
 	case *ast.ForStmt:
 		if !a.stmt(stmt.Init) {
 			return false
 		}
-		if a.isObj(stmt.Cond) {
-			return false
-		}
-		if !a.expr(stmt.Cond) {
+		if a.isObjOrNotExpr(stmt.Cond) {
 			return false
 		}
 		if !a.stmt(stmt.Post) {
@@ -480,10 +473,7 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 		if !a.stmt(stmt.Init) {
 			return false
 		}
-		if a.isObj(stmt.Cond) {
-			return false
-		}
-		if !a.expr(stmt.Cond) {
+		if a.isObjOrNotExpr(stmt.Cond) {
 			return false
 		}
 		if !a.stmt(stmt.Body) {
@@ -492,10 +482,7 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 		return a.stmt(stmt.Else)
 
 	case *ast.IncDecStmt:
-		if a.isObj(stmt.X) {
-			return false
-		}
-		return a.expr(stmt.X)
+		return !a.isObjOrNotExpr(stmt.X)
 
 	case *ast.LabeledStmt:
 		return a.stmt(stmt.Stmt)
@@ -503,10 +490,7 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 	case *ast.RangeStmt:
 		// As with AssignStmt,
 		// if our object appears on the lhs we don't care.
-		if a.isObj(stmt.X) {
-			return false
-		}
-		if !a.expr(stmt.X) {
+		if a.isObjOrNotExpr(stmt.X) {
 			return false
 		}
 		return a.stmt(stmt.Body)
@@ -543,10 +527,7 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 		return a.stmt(stmt.Body)
 
 	case *ast.SendStmt:
-		if a.isObj(stmt.Chan) {
-			return false
-		}
-		if !a.expr(stmt.Chan) {
+		if a.isObjOrNotExpr(stmt.Chan) {
 			return false
 		}
 		if a.isObj(stmt.Value) {
@@ -648,10 +629,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 		return a.expr(expr.X) && a.expr(expr.Y)
 
 	case *ast.CallExpr:
-		if a.isObj(expr.Fun) {
-			return false
-		}
-		if !a.expr(expr.Fun) {
+		if a.isObjOrNotExpr(expr.Fun) {
 			return false
 		}
 		for i, arg := range expr.Args {
@@ -820,10 +798,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 		return true
 
 	case *ast.Ellipsis:
-		if a.isObj(expr.Elt) {
-			return false
-		}
-		return a.expr(expr.Elt)
+		return !a.isObjOrNotExpr(expr.Elt)
 
 	case *ast.FuncLit:
 		return a.funcLit(expr)
@@ -832,10 +807,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 		return true
 
 	case *ast.IndexExpr:
-		if a.isObj(expr.X) {
-			return false
-		}
-		if !a.expr(expr.X) {
+		if a.isObjOrNotExpr(expr.X) {
 			return false
 		}
 		if a.isObj(expr.Index) {
@@ -860,17 +832,11 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 		return a.expr(expr.Index)
 
 	case *ast.IndexListExpr:
-		if a.isObj(expr.X) {
-			return false
-		}
-		if !a.expr(expr.X) {
+		if a.isObjOrNotExpr(expr.X) {
 			return false
 		}
 		for _, idx := range expr.Indices {
-			if a.isObj(idx) {
-				return false
-			}
-			if !a.expr(idx) {
+			if a.isObjOrNotExpr(idx) {
 				return false
 			}
 		}
@@ -893,34 +859,19 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 		return a.expr(expr.X)
 
 	case *ast.SliceExpr:
-		if a.isObj(expr.X) {
+		if a.isObjOrNotExpr(expr.X) {
 			return false
 		}
-		if !a.expr(expr.X) {
+		if a.isObjOrNotExpr(expr.Low) {
 			return false
 		}
-		if a.isObj(expr.Low) {
+		if a.isObjOrNotExpr(expr.High) {
 			return false
 		}
-		if !a.expr(expr.Low) {
-			return false
-		}
-		if a.isObj(expr.High) {
-			return false
-		}
-		if !a.expr(expr.High) {
-			return false
-		}
-		if a.isObj(expr.Max) {
-			return false
-		}
-		return a.expr(expr.Max)
+		return !a.isObjOrNotExpr(expr.Max)
 
 	case *ast.StarExpr:
-		if a.isObj(expr.X) {
-			return false
-		}
-		return a.expr(expr.X)
+		return !a.isObjOrNotExpr(expr.X)
 
 	case *ast.TypeAssertExpr:
 		// Can skip expr.Type.
@@ -934,6 +885,13 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 	}
 
 	return true
+}
+
+func (a *analyzer) isObjOrNotExpr(expr ast.Expr) bool {
+	if a.isObj(expr) {
+		return true
+	}
+	return !a.expr(expr)
 }
 
 func (a *analyzer) decl(decl ast.Decl) bool {

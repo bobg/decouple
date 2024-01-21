@@ -9,7 +9,11 @@ func getType[T types.Type](typ types.Type) T {
 	case *types.Named:
 		return getType[T](typ.Underlying())
 	default:
-		var t T
-		return t
+		return zero[T]()
 	}
+}
+
+// Returns the zero value for any type.
+func zero[T any]() (res T) {
+	return
 }
