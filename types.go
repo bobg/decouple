@@ -2,46 +2,18 @@ package decouple
 
 import "go/types"
 
-func getChanType(typ types.Type) *types.Chan {
+func getType[T types.Type](typ types.Type) T {
 	switch typ := typ.(type) {
-	case *types.Chan:
+	case T:
 		return typ
 	case *types.Named:
-		return getChanType(typ.Underlying())
+		return getType[T](typ.Underlying())
 	default:
-		return nil
+		return zero[T]()
 	}
 }
 
-func getSig(typ types.Type) *types.Signature {
-	switch typ := typ.(type) {
-	case *types.Signature:
-		return typ
-	case *types.Named:
-		return getSig(typ.Underlying())
-	default:
-		return nil
-	}
-}
-
-func getInterface(typ types.Type) *types.Interface {
-	switch typ := typ.(type) {
-	case *types.Interface:
-		return typ
-	case *types.Named:
-		return getInterface(typ.Underlying())
-	default:
-		return nil
-	}
-}
-
-func getMap(typ types.Type) *types.Map {
-	switch typ := typ.(type) {
-	case *types.Map:
-		return typ
-	case *types.Named:
-		return getMap(typ.Underlying())
-	default:
-		return nil
-	}
+// Returns the zero value for any type.
+func zero[T any]() (res T) {
+	return
 }

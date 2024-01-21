@@ -101,7 +101,8 @@ func F12(f *os.File) ([]byte, error) {
 }
 
 // {"ctx": {"Done": "func() <-chan struct{}"},
-//  "r":   {"Read": "func([]byte) (int, error)"}}
+//
+//	"r":   {"Read": "func([]byte) (int, error)"}}
 func F13(ctx context.Context, ch chan<- io.Reader, r *os.File) {
 	for {
 		select {
@@ -337,7 +338,8 @@ func F41(w io.Writer, readers []io.Reader) error {
 }
 
 // {"ctx": {"Done": "func() <-chan struct{}", "Err": "func() error"},
-//  "f": {"Name": "func() string"}}
+//
+//	"f": {"Name": "func() string"}}
 func F42(ctx context.Context, f *os.File, ch <-chan struct{}) (string, error) {
 	select {
 	case <-ctx.Done():
@@ -358,4 +360,43 @@ func F43(w io.Writer, f *os.File) error {
 		return nil
 	}
 	return fn(f)
+}
+
+// {}
+func F44(s []int, x, y, z int) []int {
+	return s[(x+1)*2 : y : z] // exercises *ast.ParenExpr and *ast.SliceExpr
+}
+
+// {}
+func F45(m map[string]int, k string) int {
+	return m[k]
+}
+
+// {"f": {"Read": "func([]byte) (int, error)"}}
+func F46(f *os.File) ([]byte, error) {
+	fn := func(r io.Reader) ([]byte, error) {
+		return io.ReadAll(r)
+	}
+	return fn(f)
+}
+
+type t47 struct {
+	f *os.File
+	r io.Reader
+}
+
+// {}
+func F47(f *os.File) t47 {
+	return t47{f: f, r: f}
+}
+
+// {"f": {"Read": "func([]byte) (int, error)"}}
+func F48(f *os.File) t47 {
+	return t47{r: f}
+}
+
+// {}
+func F49(n int) int {
+	n++
+	return n
 }
