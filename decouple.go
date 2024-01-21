@@ -7,10 +7,9 @@ import (
 	"go/types"
 	"strings"
 
+	"github.com/bobg/errors"
 	"github.com/bobg/go-generics/v3/set"
 	"github.com/bobg/go-generics/v3/slices"
-	"github.com/pkg/errors"
-	"go.uber.org/multierr"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -42,7 +41,7 @@ func NewCheckerFromDir(dir string) (Checker, error) {
 	}
 	for _, pkg := range pkgs {
 		for _, pkgerr := range pkg.Errors {
-			err = multierr.Append(err, errors.Wrapf(pkgerr, "in package %s", pkg.PkgPath))
+			err = errors.Join(err, errors.Wrapf(pkgerr, "in package %s", pkg.PkgPath))
 		}
 	}
 	if err != nil {
@@ -102,7 +101,7 @@ func findNamedInterfaces(pkg *packages.Package, seen set.Of[*packages.Package], 
 					// Should be impossible.
 					continue
 				}
-				intf := getInterface(obj.Type())
+				intf := getType[*types.Interface](obj.Type())
 				if intf == nil {
 					continue
 				}
@@ -238,7 +237,7 @@ func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *
 	}
 
 	var (
-		intf = getInterface(obj.Type())
+		intf = getType[*types.Interface](obj.Type())
 		mm   MethodMap
 	)
 	if intf != nil {
@@ -327,7 +326,7 @@ func (a *analyzer) enclosingFuncInfo() (types.Type, token.Position, bool) {
 }
 
 func (a *analyzer) getSig(expr ast.Expr) *types.Signature {
-	return getSig(a.pkg.TypesInfo.Types[expr].Type)
+	return getType[*types.Signature](a.pkg.TypesInfo.Types[expr].Type)
 }
 
 // Does expr denote the object in a?
@@ -378,7 +377,7 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 				if !ok {
 					panic(errf("no type info for lvalue %d in assignment at %s", i, a.pos(stmt)))
 				}
-				intf := getInterface(tv.Type)
+				intf := getType[*types.Interface](tv.Type)
 				if intf == nil {
 					return false
 				}
@@ -453,20 +452,13 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 		return a.expr(stmt.Call)
 
 	case *ast.ExprStmt:
-		if a.isObj(stmt.X) {
-			// This probably can't happen in a well-formed program.
-			return false
-		}
-		return a.expr(stmt.X)
+		return !a.isObjOrNotExpr(stmt.X) // a.isObj(stmt.X) probably can't happen in a well-formed program.
 
 	case *ast.ForStmt:
 		if !a.stmt(stmt.Init) {
 			return false
 		}
-		if a.isObj(stmt.Cond) {
-			return false
-		}
-		if !a.expr(stmt.Cond) {
+		if a.isObjOrNotExpr(stmt.Cond) {
 			return false
 		}
 		if !a.stmt(stmt.Post) {
@@ -481,10 +473,7 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 		if !a.stmt(stmt.Init) {
 			return false
 		}
-		if a.isObj(stmt.Cond) {
-			return false
-		}
-		if !a.expr(stmt.Cond) {
+		if a.isObjOrNotExpr(stmt.Cond) {
 			return false
 		}
 		if !a.stmt(stmt.Body) {
@@ -493,10 +482,7 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 		return a.stmt(stmt.Else)
 
 	case *ast.IncDecStmt:
-		if a.isObj(stmt.X) {
-			return false
-		}
-		return a.expr(stmt.X)
+		return !a.isObjOrNotExpr(stmt.X)
 
 	case *ast.LabeledStmt:
 		return a.stmt(stmt.Stmt)
@@ -504,10 +490,7 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 	case *ast.RangeStmt:
 		// As with AssignStmt,
 		// if our object appears on the lhs we don't care.
-		if a.isObj(stmt.X) {
-			return false
-		}
-		if !a.expr(stmt.X) {
+		if a.isObjOrNotExpr(stmt.X) {
 			return false
 		}
 		return a.stmt(stmt.Body)
@@ -527,7 +510,7 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 					panic(errf("cannot return %d value(s) from %d-value-returning function at %s", i+1, sig.Results().Len(), a.pos(stmt)))
 				}
 				resultvar := sig.Results().At(i)
-				intf := getInterface(resultvar.Type())
+				intf := getType[*types.Interface](resultvar.Type())
 				if intf == nil {
 					return false
 				}
@@ -544,10 +527,7 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 		return a.stmt(stmt.Body)
 
 	case *ast.SendStmt:
-		if a.isObj(stmt.Chan) {
-			return false
-		}
-		if !a.expr(stmt.Chan) {
+		if a.isObjOrNotExpr(stmt.Chan) {
 			return false
 		}
 		if a.isObj(stmt.Value) {
@@ -555,11 +535,11 @@ func (a *analyzer) stmt(stmt ast.Stmt) (ok bool) {
 			if !ok {
 				panic(errf("no type info for channel in send statement at %s", a.pos(stmt)))
 			}
-			chtyp := getChanType(tv.Type)
+			chtyp := getType[*types.Chan](tv.Type)
 			if chtyp == nil {
 				panic(errf("got %T, want channel for type of channel in send statement at %s", tv.Type, a.pos(stmt)))
 			}
-			intf := getInterface(chtyp.Elem())
+			intf := getType[*types.Interface](chtyp.Elem())
 			if intf == nil {
 				return false
 			}
@@ -634,7 +614,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 				if !ok {
 					panic(errf("no type info for expr at %s", a.pos(other)))
 				}
-				intf := getInterface(tv.Type)
+				intf := getType[*types.Interface](tv.Type)
 				if intf == nil {
 					return false
 				}
@@ -649,10 +629,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 		return a.expr(expr.X) && a.expr(expr.Y)
 
 	case *ast.CallExpr:
-		if a.isObj(expr.Fun) {
-			return false
-		}
-		if !a.expr(expr.Fun) {
+		if a.isObjOrNotExpr(expr.Fun) {
 			return false
 		}
 		for i, arg := range expr.Args {
@@ -665,7 +642,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 				if !ok {
 					panic(errf("no type info for function in call expression at %s", a.pos(expr)))
 				}
-				sig := getSig(tv.Type)
+				sig := getType[*types.Signature](tv.Type)
 				if sig == nil {
 					// This could be a type conversion expression; e.g. int(x).
 					if len(expr.Args) == 1 {
@@ -690,7 +667,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 				} else {
 					ptype = params.At(i).Type()
 				}
-				intf := getInterface(ptype)
+				intf := getType[*types.Interface](ptype)
 				if intf == nil {
 					return false
 				}
@@ -712,11 +689,11 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 					if !ok {
 						panic(errf("no type info for composite literal at %s", a.pos(expr)))
 					}
-					mapType := getMap(tv.Type)
+					mapType := getType[*types.Map](tv.Type)
 					if mapType == nil {
 						return false
 					}
-					intf := getInterface(mapType.Key())
+					intf := getType[*types.Interface](mapType.Key())
 					if intf == nil {
 						return false
 					}
@@ -768,7 +745,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 						return false
 					}
 
-					intf := getInterface(elemType)
+					intf := getType[*types.Interface](elemType)
 					if intf == nil {
 						return false
 					}
@@ -806,7 +783,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 					elemType = literalType.Elem()
 				}
 
-				intf := getInterface(elemType)
+				intf := getType[*types.Interface](elemType)
 				if intf == nil {
 					return false
 				}
@@ -821,10 +798,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 		return true
 
 	case *ast.Ellipsis:
-		if a.isObj(expr.Elt) {
-			return false
-		}
-		return a.expr(expr.Elt)
+		return !a.isObjOrNotExpr(expr.Elt)
 
 	case *ast.FuncLit:
 		return a.funcLit(expr)
@@ -833,10 +807,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 		return true
 
 	case *ast.IndexExpr:
-		if a.isObj(expr.X) {
-			return false
-		}
-		if !a.expr(expr.X) {
+		if a.isObjOrNotExpr(expr.X) {
 			return false
 		}
 		if a.isObj(expr.Index) {
@@ -847,11 +818,11 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 			if !ok {
 				panic(errf("no type info for index expression at %s", a.pos(expr)))
 			}
-			mapType := getMap(tv.Type)
+			mapType := getType[*types.Map](tv.Type)
 			if mapType == nil {
 				return false
 			}
-			intf := getInterface(mapType.Key())
+			intf := getType[*types.Interface](mapType.Key())
 			if intf == nil {
 				return false
 			}
@@ -861,17 +832,11 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 		return a.expr(expr.Index)
 
 	case *ast.IndexListExpr:
-		if a.isObj(expr.X) {
-			return false
-		}
-		if !a.expr(expr.X) {
+		if a.isObjOrNotExpr(expr.X) {
 			return false
 		}
 		for _, idx := range expr.Indices {
-			if a.isObj(idx) {
-				return false
-			}
-			if !a.expr(idx) {
+			if a.isObjOrNotExpr(idx) {
 				return false
 			}
 		}
@@ -894,34 +859,19 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 		return a.expr(expr.X)
 
 	case *ast.SliceExpr:
-		if a.isObj(expr.X) {
+		if a.isObjOrNotExpr(expr.X) {
 			return false
 		}
-		if !a.expr(expr.X) {
+		if a.isObjOrNotExpr(expr.Low) {
 			return false
 		}
-		if a.isObj(expr.Low) {
+		if a.isObjOrNotExpr(expr.High) {
 			return false
 		}
-		if !a.expr(expr.Low) {
-			return false
-		}
-		if a.isObj(expr.High) {
-			return false
-		}
-		if !a.expr(expr.High) {
-			return false
-		}
-		if a.isObj(expr.Max) {
-			return false
-		}
-		return a.expr(expr.Max)
+		return !a.isObjOrNotExpr(expr.Max)
 
 	case *ast.StarExpr:
-		if a.isObj(expr.X) {
-			return false
-		}
-		return a.expr(expr.X)
+		return !a.isObjOrNotExpr(expr.X)
 
 	case *ast.TypeAssertExpr:
 		// Can skip expr.Type.
@@ -935,6 +885,13 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 	}
 
 	return true
+}
+
+func (a *analyzer) isObjOrNotExpr(expr ast.Expr) bool {
+	if a.isObj(expr) {
+		return true
+	}
+	return !a.expr(expr)
 }
 
 func (a *analyzer) decl(decl ast.Decl) bool {
@@ -957,7 +914,7 @@ func (a *analyzer) decl(decl ast.Decl) bool {
 					if !ok {
 						panic(errf("no type info for variable declaration at %s", a.pos(valspec)))
 					}
-					intf := getInterface(tv.Type)
+					intf := getType[*types.Interface](tv.Type)
 					if intf == nil {
 						return false
 					}

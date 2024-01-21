@@ -5,9 +5,8 @@ go 1.21
 toolchain go1.21.0
 
 require (
+	github.com/bobg/errors v0.10.0
 	github.com/bobg/go-generics/v3 v3.0.0
-	github.com/pkg/errors v0.9.1
-	go.uber.org/multierr v1.11.0
 	golang.org/x/tools v0.12.0
 )
 
