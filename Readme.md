@@ -55,16 +55,18 @@ go install github.com/bobg/decouple/cmd/decouple@latest
 ## Usage
 
 ```sh
-decouple [-v] [DIR]
+decouple [-v] [-json] [DIR]
 ```
 
 This produces a report about the Go packages rooted at DIR
 (the current directory by default).
 With -v,
 very verbose debugging output is printed along the way.
+With -json,
+the output is in JSON format.
 
 The report will be empty if decouple has no findings.
-Otherwise, it will look something like this:
+Otherwise, it will look something like this (without -json):
 
 ```
 $ decouple
@@ -110,3 +112,82 @@ while the absence of them means “this is an existing type that already has the
 Decouple can’t always find a suitable existing type even when one exists,
 and if two or more types match,
 it doesn’t always choose the best one.
+
+The same report with `-json` specified looks like this:
+
+```
+{
+  "PackageName": "main",
+  "FileName": "/home/bobg/kodigcs/handle.go",
+  "Line": 105,
+  "Column": 18,
+  "FuncName": "handleDir",
+  "Params": [
+    {
+      "Name": "req",
+      "Methods": [
+        "Context"
+      ]
+    },
+    {
+      "Name": "w",
+      "Methods": [
+        "Write"
+      ],
+      "InterfaceName": "io.Writer"
+    }
+  ]
+}
+{
+  "PackageName": "main",
+  "FileName": "/home/bobg/kodigcs/handle.go",
+  "Line": 167,
+  "Column": 18,
+  "FuncName": "handleNFO",
+  "Params": [
+    {
+      "Name": "req",
+      "Methods": [
+        "Context"
+      ]
+    },
+    {
+      "Name": "w",
+      "Methods": [
+        "Header",
+        "Write"
+      ]
+    }
+  ]
+}
+{
+  "PackageName": "main",
+  "FileName": "/home/bobg/kodigcs/handle.go",
+  "Line": 428,
+  "Column": 6,
+  "FuncName": "isStale",
+  "Params": [
+    {
+      "Name": "t",
+      "Methods": [
+        "Before"
+      ]
+    }
+  ]
+}
+{
+  "PackageName": "main",
+  "FileName": "/home/bobg/kodigcs/imdb.go",
+  "Line": 59,
+  "Column": 6,
+  "FuncName": "parseIMDbPage",
+  "Params": [
+    {
+      "Name": "cl",
+      "Methods": [
+        "Do"
+      ]
+    }
+  ]
+}
+```
