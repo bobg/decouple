@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 
+	"github.com/bobg/errors"
 	"github.com/bobg/go-generics/v3/maps"
 
 	"github.com/bobg/decouple"
@@ -21,28 +23,32 @@ func main() {
 	flag.BoolVar(&doJSON, "json", false, "output in JSON format")
 	flag.Parse()
 
+	if err := run(os.Stdout, verbose, doJSON, flag.Args()); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run(w io.Writer, verbose, doJSON bool, args []string) error {
 	var dir string
-	switch flag.NArg() {
+	switch len(args) {
 	case 0:
 		dir = "."
 	case 1:
-		dir = flag.Arg(0)
+		dir = args[0]
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: %s [-v] [DIR]\n", os.Args[0])
-		os.Exit(1)
+		return fmt.Errorf("Usage: %s [-v] [-json] [DIR]", os.Args[0])
 	}
 
 	checker, err := decouple.NewCheckerFromDir(dir)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return errors.Wrapf(err, "creating checker for %s", dir)
 	}
 	checker.Verbose = verbose
 
 	tuples, err := checker.Check()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return errors.Wrapf(err, "checking %s", dir)
 	}
 
 	sort.Slice(tuples, func(i, j int) bool {
@@ -57,11 +63,8 @@ func main() {
 	})
 
 	if doJSON {
-		if err := showJSON(checker, tuples); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		return
+		err := showJSON(w, checker, tuples)
+		return errors.Wrap(err, "formatting JSON output")
 	}
 
 	for _, tuple := range tuples {
@@ -76,24 +79,26 @@ func main() {
 			}
 
 			if !showedFuncName {
-				fmt.Printf("%s: %s\n", tuple.Pos(), tuple.F.Name.Name)
+				fmt.Fprintf(w, "%s: %s\n", tuple.Pos(), tuple.F.Name.Name)
 				showedFuncName = true
 			}
 
 			if intfName := checker.NameForMethods(mm); intfName != "" {
-				fmt.Printf("    %s: %s\n", param, intfName)
+				fmt.Fprintf(w, "    %s: %s\n", param, intfName)
 				continue
 			}
 
 			methods := maps.Keys(tuple.M[param])
 			sort.Strings(methods)
-			fmt.Printf("    %s: %v\n", param, methods)
+			fmt.Fprintf(w, "    %s: %v\n", param, methods)
 		}
 	}
+
+	return nil
 }
 
-func showJSON(checker decouple.Checker, tuples []decouple.Tuple) error {
-	enc := json.NewEncoder(os.Stdout)
+func showJSON(w io.Writer, checker decouple.Checker, tuples []decouple.Tuple) error {
+	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 
 	for _, tuple := range tuples {
