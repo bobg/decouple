@@ -34,6 +34,7 @@ func TestRunJSON(t *testing.T) {
 		PackageName: "main",
 		FileName:    "main.go",
 		Line:        100,
+		Column:      6,
 		FuncName:    "showJSON",
 		Params: []jparam{{
 			Name: "checker",

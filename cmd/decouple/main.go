@@ -107,6 +107,7 @@ func showJSON(w io.Writer, checker decouple.Checker, tuples []decouple.Tuple) er
 			PackageName: tuple.P.Name,
 			FileName:    p.Filename,
 			Line:        p.Line,
+			Column:      p.Column,
 			FuncName:    tuple.F.Name.Name,
 		}
 		for param, mm := range tuple.M {
@@ -138,11 +139,11 @@ func showJSON(w io.Writer, checker decouple.Checker, tuples []decouple.Tuple) er
 }
 
 type jtuple struct {
-	PackageName string
-	FileName    string
-	Line        int
-	FuncName    string
-	Params      []jparam
+	PackageName  string
+	FileName     string
+	Line, Column int
+	FuncName     string
+	Params       []jparam
 }
 
 type jparam struct {
