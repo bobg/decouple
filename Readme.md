@@ -192,3 +192,28 @@ The same report with `-json` specified looks like this:
   ]
 }
 ```
+
+## Performance note
+
+Replacing overspecified function parameters with more-abstract ones,
+which this tool helps you to do,
+is often but not always the right thing,
+and it should not be done blindly.
+
+Using Go interfaces can impose an _abstraction penalty_ compared to using concrete types.
+Function arguments that could have been on [the stack](https://en.wikipedia.org/wiki/Stack-based_memory_allocation)
+may end up in [the heap](https://en.wikipedia.org/wiki/Heap-based_memory_allocation),
+and method calls may involve [a virtual-dispatch step](https://en.wikipedia.org/wiki/Dynamic_dispatch).
+
+In many cases this penalty is small and can be ignored,
+especially since the Go compiler may optimize some or all of it away.
+But in tight inner loops
+and other performance-critical code
+it is often preferable to operate only on concrete types when possible.
+
+That said,
+avoid the fallacy of [premature optimization](https://wiki.c2.com/?PrematureOptimization).
+Write your code for clarity and utility first.
+Then sacrifice those for the sake of performance
+not in the places where you _think_ they’ll make a difference,
+but in the places where you’ve _measured_ that they’re needed.
