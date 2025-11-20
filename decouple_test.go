@@ -6,11 +6,11 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"maps"
 	"strings"
 	"testing"
 
-	"github.com/bobg/go-generics/v3/maps"
-	"github.com/bobg/go-generics/v3/set"
+	"github.com/bobg/go-generics/v4/set"
 	// "github.com/davecgh/go-spew/spew"
 )
 
@@ -49,8 +49,8 @@ func TestCheck(t *testing.T) {
 			}
 
 			var (
-				gotParamNames  = set.New(maps.Keys(tuple.M)...)
-				wantParamNames = set.New(maps.Keys(pre)...)
+				gotParamNames  = set.Collect(maps.Keys(tuple.M))
+				wantParamNames = set.Collect(maps.Keys(pre))
 			)
 			if !gotParamNames.Equal(wantParamNames) {
 				t.Fatalf("got param names %v, want %v", gotParamNames.Slice(), wantParamNames.Slice())
@@ -59,8 +59,8 @@ func TestCheck(t *testing.T) {
 			for paramName, methods := range pre {
 				t.Run(paramName, func(t *testing.T) {
 					var (
-						gotMethodNames  = set.New(maps.Keys(tuple.M[paramName])...)
-						wantMethodNames = set.New(maps.Keys(methods)...)
+						gotMethodNames  = set.Collect(maps.Keys(tuple.M[paramName]))
+						wantMethodNames = set.Collect(maps.Keys(methods))
 					)
 					if !gotMethodNames.Equal(wantMethodNames) {
 						t.Fatalf("got method names %v, want %v", gotMethodNames.Slice(), wantMethodNames.Slice())
@@ -91,7 +91,11 @@ func TestCheck(t *testing.T) {
 
 				for paramName, intfname := range intfnames {
 					t.Run(paramName, func(t *testing.T) {
-						got := checker.NameForMethods(tuple.M[paramName])
+						gotPkg, gotName := checker.NameForMethods(tuple.M[paramName])
+						if gotName == "" {
+							t.Fatalf("no named interface found for param %s", paramName)
+						}
+						got := gotPkg.PkgPath + "." + gotName
 						if got != intfname {
 							t.Errorf("got %s, want %s", got, intfname)
 						}

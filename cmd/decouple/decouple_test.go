@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
-	"github.com/bobg/go-generics/v3/iter"
+	"github.com/bobg/seqs"
 )
 
 func TestRunJSON(t *testing.T) {
@@ -33,7 +34,7 @@ func TestRunJSON(t *testing.T) {
 	want := []jtuple{{
 		PackageName: "main",
 		FileName:    "main.go",
-		Line:        100,
+		Line:        105,
 		Column:      6,
 		FuncName:    "showJSON",
 		Params: []jparam{{
@@ -55,8 +56,9 @@ func TestRunPlain(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lines, err := iter.ToSlice(iter.Lines(buf))
-	if err != nil {
+	linesSeq, errptr := seqs.Lines(buf)
+	lines := slices.Collect(linesSeq)
+	if err := *errptr; err != nil {
 		t.Fatal(err)
 	}
 

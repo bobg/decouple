@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/bobg/errors"
 	"github.com/bobg/go-generics/v3/maps"
@@ -83,8 +84,12 @@ func run(w io.Writer, verbose, doJSON bool, args []string) error {
 				showedFuncName = true
 			}
 
-			if intfName := checker.NameForMethods(mm); intfName != "" {
-				fmt.Fprintf(w, "    %s: %s\n", param, intfName)
+			if pkg, intfName := checker.NameForMethods(mm); intfName != "" {
+				pkgpath := pkg.PkgPath
+				if strings.ContainsAny(pkgpath, "./") {
+					pkgpath = fmt.Sprintf(`"%s"`, pkgpath)
+				}
+				fmt.Fprintf(w, "    %s: %s.%s\n", param, pkgpath, intfName)
 				continue
 			}
 
@@ -119,7 +124,8 @@ func showJSON(w io.Writer, checker decouple.Checker, tuples []decouple.Tuple) er
 				Methods: maps.Keys(mm),
 			}
 			sort.Strings(jp.Methods)
-			if intfName := checker.NameForMethods(mm); intfName != "" {
+			if pkg, intfName := checker.NameForMethods(mm); intfName != "" {
+				jp.InterfacePkg = pkg.PkgPath
 				jp.InterfaceName = intfName
 			}
 			jt.Params = append(jt.Params, jp)
@@ -149,5 +155,6 @@ type jtuple struct {
 type jparam struct {
 	Name          string
 	Methods       []string `json:",omitempty"`
+	InterfacePkg  string   `json:",omitempty"`
 	InterfaceName string   `json:",omitempty"`
 }

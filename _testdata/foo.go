@@ -274,7 +274,6 @@ func F34(r *os.File, ch chan<- *os.File) ([]byte, error) {
 }
 
 // {"x": {"foo": "func()"}}
-// {"x": ""}
 func F35(x interface {
 	foo()
 	bar()

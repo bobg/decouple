@@ -5,11 +5,11 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/bobg/errors"
-	"github.com/bobg/go-generics/v3/set"
-	"github.com/bobg/go-generics/v3/slices"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -27,7 +27,7 @@ type Checker struct {
 	Verbose bool
 
 	pkgs            []*packages.Package
-	namedInterfaces map[string]MethodMap // maps a package-qualified interface-type name to its method set
+	namedInterfaces map[*packages.Package]map[string]MethodMap // pkg -> named interface type -> method set
 }
 
 // NewCheckerFromDir creates a new Checker containing packages loaded
@@ -54,24 +54,24 @@ func NewCheckerFromDir(dir string) (Checker, error) {
 // which should be the result of calling "golang.org/x/go/packages".Load
 // with at least the bits in PkgMode set in the Config.Mode field.
 func NewCheckerFromPackages(pkgs []*packages.Package) Checker {
-	var (
-		namedInterfaces = make(map[string]MethodMap)
-		seen            = set.New[*packages.Package]()
-	)
+	namedInterfaces := make(map[*packages.Package]map[string]MethodMap)
 	for _, pkg := range pkgs {
-		findNamedInterfaces(pkg, seen, namedInterfaces)
+		findNamedInterfaces(pkg, namedInterfaces)
 	}
 	return Checker{pkgs: pkgs, namedInterfaces: namedInterfaces}
 }
 
-func findNamedInterfaces(pkg *packages.Package, seen set.Of[*packages.Package], namedInterfaces map[string]MethodMap) {
-	if seen.Has(pkg) {
+func findNamedInterfaces(pkg *packages.Package, namedInterfaces map[*packages.Package]map[string]MethodMap) {
+	if _, ok := namedInterfaces[pkg]; ok {
+		// Already visited this package.
 		return
 	}
-	seen.Add(pkg)
+
+	namedInterfacesForPkg := make(map[string]MethodMap)
+	namedInterfaces[pkg] = namedInterfacesForPkg
 
 	for _, ipkg := range pkg.Imports {
-		findNamedInterfaces(ipkg, seen, namedInterfaces)
+		findNamedInterfaces(ipkg, namedInterfaces)
 	}
 
 	if isInternal(pkg.PkgPath) {
@@ -107,16 +107,10 @@ func findNamedInterfaces(pkg *packages.Package, seen set.Of[*packages.Package], 
 				}
 				mm := make(MethodMap)
 				addMethodsToMap(intf, mm)
-				name := pkg.PkgPath
-				if strings.ContainsAny(name, "./") {
-					name = `"` + name + `"`
-				}
-				name += "." + typespec.Name.Name
-				namedInterfaces[name] = mm
+				namedInterfacesForPkg[typespec.Name.Name] = mm
 			}
 		}
 	}
-
 }
 
 // Check checks all the packages in the Checker.
@@ -274,14 +268,65 @@ func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *
 // and returns the name of an interface defining exactly the methods in it,
 // if it can find one among the packages in the Checker.
 // If there are multiple such interfaces,
-// one is chosen arbitrarily.
-func (ch Checker) NameForMethods(inp MethodMap) string {
-	for name, mm := range ch.namedInterfaces {
-		if sameMethodMaps(mm, inp) {
-			return name
+// one is chosen arbitrarily from the Go standard library, if any exist,
+// otherwise from the "main module," if any exist there,
+// otherwise from any modules directly depended on by the main module,
+// and finally from any other module.
+func (ch Checker) NameForMethods(inp MethodMap) (*packages.Package, string) {
+	type pkgNamePair struct {
+		pkg  *packages.Package
+		name string
+	}
+	var pairs []pkgNamePair
+
+	for pkg, namedInterfaces := range ch.namedInterfaces {
+		for name, methodMap := range namedInterfaces {
+			if sameMethodMaps(methodMap, inp) {
+				pairs = append(pairs, pkgNamePair{pkg: pkg, name: name})
+			}
 		}
 	}
-	return ""
+
+	if len(pairs) == 0 {
+		return nil, ""
+	}
+
+	sort.Slice(pairs, func(i, j int) bool {
+		a, b := pairs[i], pairs[j]
+		if isStdlib(a.pkg.PkgPath) && !isStdlib(b.pkg.PkgPath) {
+			return true
+		}
+		if !isStdlib(a.pkg.PkgPath) && isStdlib(b.pkg.PkgPath) {
+			return false
+		}
+		if isMainModulePackage(a.pkg) && !isMainModulePackage(b.pkg) {
+			return true
+		}
+		if !isMainModulePackage(a.pkg) && isMainModulePackage(b.pkg) {
+			return false
+		}
+		if isDirectDependencyOfMainModule(a.pkg) && !isDirectDependencyOfMainModule(b.pkg) {
+			return true
+		}
+		if !isDirectDependencyOfMainModule(a.pkg) && isDirectDependencyOfMainModule(b.pkg) {
+			return false
+		}
+		return a.pkg.PkgPath < b.pkg.PkgPath
+	})
+
+	return pairs[0].pkg, pairs[0].name
+}
+
+func isStdlib(pkgPath string) bool {
+	return !strings.Contains(pkgPath, ".")
+}
+
+func isMainModulePackage(pkg *packages.Package) bool {
+	return pkg.Module != nil && pkg.Module.Main
+}
+
+func isDirectDependencyOfMainModule(pkg *packages.Package) bool {
+	return pkg.Module != nil && !pkg.Module.Main && !pkg.Module.Indirect
 }
 
 type funcDeclOrLit struct {
