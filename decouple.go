@@ -6,7 +6,6 @@ import (
 	"go/token"
 	"go/types"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/bobg/errors"
@@ -268,53 +267,51 @@ func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *
 // and returns the name of an interface defining exactly the methods in it,
 // if it can find one among the packages in the Checker.
 // If there are multiple such interfaces,
-// one is chosen arbitrarily from the Go standard library, if any exist,
-// otherwise from the "main module," if any exist there,
+// one is chosen arbitrarily from the Go standard library if possible,
+// otherwise from the "main module" if possible,
 // otherwise from any modules directly depended on by the main module,
 // and finally from any other module.
 func (ch Checker) NameForMethods(inp MethodMap) (*packages.Package, string) {
-	type pkgNamePair struct {
-		pkg  *packages.Package
-		name string
-	}
-	var pairs []pkgNamePair
+	var (
+		bestPkg                *packages.Package
+		bestName               string
+		bestIsMainModule       bool
+		bestIsDirectDependency bool
+	)
 
 	for pkg, namedInterfaces := range ch.namedInterfaces {
 		for name, methodMap := range namedInterfaces {
-			if sameMethodMaps(methodMap, inp) {
-				pairs = append(pairs, pkgNamePair{pkg: pkg, name: name})
+			if !sameMethodMaps(methodMap, inp) {
+				continue
+			}
+			if isStdlib(pkg.PkgPath) {
+				// First match found in stdlib wins.
+				return pkg, name
+			}
+			if bestPkg == nil {
+				bestPkg, bestName = pkg, name
+				bestIsMainModule = isMainModulePackage(pkg)
+				bestIsDirectDependency = isDirectDependencyOfMainModule(pkg)
+				continue
+			}
+			if isMainModulePackage(pkg) {
+				if !bestIsMainModule {
+					bestPkg, bestName = pkg, name
+					bestIsMainModule = true
+				}
+				continue
+			}
+			if isDirectDependencyOfMainModule(pkg) {
+				if !bestIsDirectDependency {
+					bestPkg, bestName = pkg, name
+					bestIsDirectDependency = true
+				}
+				continue
 			}
 		}
 	}
 
-	if len(pairs) == 0 {
-		return nil, ""
-	}
-
-	sort.Slice(pairs, func(i, j int) bool {
-		a, b := pairs[i], pairs[j]
-		if isStdlib(a.pkg.PkgPath) && !isStdlib(b.pkg.PkgPath) {
-			return true
-		}
-		if !isStdlib(a.pkg.PkgPath) && isStdlib(b.pkg.PkgPath) {
-			return false
-		}
-		if isMainModulePackage(a.pkg) && !isMainModulePackage(b.pkg) {
-			return true
-		}
-		if !isMainModulePackage(a.pkg) && isMainModulePackage(b.pkg) {
-			return false
-		}
-		if isDirectDependencyOfMainModule(a.pkg) && !isDirectDependencyOfMainModule(b.pkg) {
-			return true
-		}
-		if !isDirectDependencyOfMainModule(a.pkg) && isDirectDependencyOfMainModule(b.pkg) {
-			return false
-		}
-		return a.pkg.PkgPath < b.pkg.PkgPath
-	})
-
-	return pairs[0].pkg, pairs[0].name
+	return bestPkg, bestName
 }
 
 func isStdlib(pkgPath string) bool {
