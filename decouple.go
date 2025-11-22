@@ -26,13 +26,12 @@ type Checker struct {
 	Verbose bool
 
 	pkgs            []*packages.Package
-	namedInterfaces map[*packages.Package]map[string]NamedInterfacePair // pkg -> named interface type -> (method map, is alias)
+	namedInterfaces map[*packages.Package]map[string]namedInterfacePair // pkg -> named interface type -> (method map, is alias)
 }
 
-// NamedInterfacePair is a MethodMap and an is-alias flag.
-type NamedInterfacePair struct {
-	Map     MethodMap
-	IsAlias bool
+type namedInterfacePair struct {
+	mmap    MethodMap
+	isAlias bool
 }
 
 // NewCheckerFromDir creates a new Checker containing packages loaded
@@ -59,20 +58,20 @@ func NewCheckerFromDir(dir string) (Checker, error) {
 // which should be the result of calling "golang.org/x/go/packages".Load
 // with at least the bits in PkgMode set in the Config.Mode field.
 func NewCheckerFromPackages(pkgs []*packages.Package) Checker {
-	namedInterfaces := make(map[*packages.Package]map[string]NamedInterfacePair)
+	namedInterfaces := make(map[*packages.Package]map[string]namedInterfacePair)
 	for _, pkg := range pkgs {
 		findNamedInterfaces(pkg, namedInterfaces)
 	}
 	return Checker{pkgs: pkgs, namedInterfaces: namedInterfaces}
 }
 
-func findNamedInterfaces(pkg *packages.Package, namedInterfaces map[*packages.Package]map[string]NamedInterfacePair) {
+func findNamedInterfaces(pkg *packages.Package, namedInterfaces map[*packages.Package]map[string]namedInterfacePair) {
 	if _, ok := namedInterfaces[pkg]; ok {
 		// Already visited this package.
 		return
 	}
 
-	namedInterfacesForPkg := make(map[string]NamedInterfacePair)
+	namedInterfacesForPkg := make(map[string]namedInterfacePair)
 	namedInterfaces[pkg] = namedInterfacesForPkg
 
 	for _, ipkg := range pkg.Imports {
@@ -112,7 +111,7 @@ func findNamedInterfaces(pkg *packages.Package, namedInterfaces map[*packages.Pa
 				}
 				mm := make(MethodMap)
 				addMethodsToMap(intf, mm)
-				namedInterfacesForPkg[typespec.Name.Name] = NamedInterfacePair{Map: mm, IsAlias: typespec.Assign != token.NoPos}
+				namedInterfacesForPkg[typespec.Name.Name] = namedInterfacePair{mmap: mm, isAlias: typespec.Assign != token.NoPos}
 			}
 		}
 	}
@@ -288,10 +287,10 @@ func (ch Checker) NameForMethods(inp MethodMap) (*packages.Package, string) {
 
 	for pkg, namedInterfaces := range ch.namedInterfaces {
 		for name, pair := range namedInterfaces {
-			if !sameMethodMaps(pair.Map, inp) {
+			if !sameMethodMaps(pair.mmap, inp) {
 				continue
 			}
-			chooser.choose(pkg, name, pair.IsAlias)
+			chooser.choose(pkg, name, pair.isAlias)
 			if chooser.isStdlib && !chooser.isAlias {
 				// Instant winner.
 				return chooser.pkg, chooser.name
