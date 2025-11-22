@@ -5,12 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/bobg/errors"
-	"github.com/bobg/go-generics/v3/maps"
 
 	"github.com/bobg/decouple"
 )
@@ -71,7 +72,7 @@ func run(w io.Writer, verbose, doJSON bool, args []string) error {
 	for _, tuple := range tuples {
 		var showedFuncName bool
 
-		params := maps.Keys(tuple.M)
+		params := slices.Collect(maps.Keys(tuple.M))
 		sort.Strings(params)
 		for _, param := range params {
 			mm := tuple.M[param]

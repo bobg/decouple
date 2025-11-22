@@ -1,7 +1,5 @@
 github.com/bobg/errors v1.1.0 h1:gsVanPzJMpZQpwY+27/GQYElZez5CuMYwiIpk2A3RGw=
 github.com/bobg/errors v1.1.0/go.mod h1:Q4775qBZpnte7EGFJqmvnlB1U4pkI1XmU3qxqdp7Zcc=
-github.com/bobg/go-generics/v3 v3.7.0 h1:4SJHDWqONTRcA8al6491VW/ys6061bPCcTcI7YnIHPc=
-github.com/bobg/go-generics/v3 v3.7.0/go.mod h1:wGlMLQER92clsh3cJoQjbUtUEJ03FoxnGhZjaWhf4fM=
 github.com/bobg/go-generics/v4 v4.2.0 h1:c3eX8rlFCRrxFnUepwQIA174JK7WuckbdRHf5ARCl7w=
 github.com/bobg/go-generics/v4 v4.2.0/go.mod h1:KVwpxEYErjvcqjJSJqVNZd/JEq3SsQzb9t01+82pZGw=
 github.com/bobg/seqs v1.8.0 h1:UfmjNlR3PIWfu+7ok4oVuekzlXWDL12g99fyMngNuT4=
