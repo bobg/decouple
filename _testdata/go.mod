@@ -1,3 +1,3 @@
-module m
+module github.com/bobg/decouple/testdata
 
-go 1.19
+go 1.23

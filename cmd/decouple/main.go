@@ -5,11 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/bobg/errors"
-	"github.com/bobg/go-generics/v3/maps"
 
 	"github.com/bobg/decouple"
 )
@@ -37,7 +39,7 @@ func run(w io.Writer, verbose, doJSON bool, args []string) error {
 	case 1:
 		dir = args[0]
 	default:
-		return fmt.Errorf("Usage: %s [-v] [-json] [DIR]", os.Args[0])
+		return fmt.Errorf("usage: %s [-v] [-json] [DIR]", os.Args[0])
 	}
 
 	checker, err := decouple.NewCheckerFromDir(dir)
@@ -70,7 +72,7 @@ func run(w io.Writer, verbose, doJSON bool, args []string) error {
 	for _, tuple := range tuples {
 		var showedFuncName bool
 
-		params := maps.Keys(tuple.M)
+		params := slices.Collect(maps.Keys(tuple.M))
 		sort.Strings(params)
 		for _, param := range params {
 			mm := tuple.M[param]
@@ -83,12 +85,16 @@ func run(w io.Writer, verbose, doJSON bool, args []string) error {
 				showedFuncName = true
 			}
 
-			if intfName := checker.NameForMethods(mm); intfName != "" {
-				fmt.Fprintf(w, "    %s: %s\n", param, intfName)
+			if pkg, intfName := checker.NameForMethods(mm); intfName != "" {
+				pkgpath := pkg.PkgPath
+				if strings.ContainsAny(pkgpath, "./") {
+					pkgpath = fmt.Sprintf(`"%s"`, pkgpath)
+				}
+				fmt.Fprintf(w, "    %s: %s.%s\n", param, pkgpath, intfName)
 				continue
 			}
 
-			methods := maps.Keys(tuple.M[param])
+			methods := slices.Collect(maps.Keys(tuple.M[param]))
 			sort.Strings(methods)
 			fmt.Fprintf(w, "    %s: %v\n", param, methods)
 		}
@@ -116,10 +122,11 @@ func showJSON(w io.Writer, checker decouple.Checker, tuples []decouple.Tuple) er
 			}
 			jp := jparam{
 				Name:    param,
-				Methods: maps.Keys(mm),
+				Methods: slices.Collect(maps.Keys(mm)),
 			}
 			sort.Strings(jp.Methods)
-			if intfName := checker.NameForMethods(mm); intfName != "" {
+			if pkg, intfName := checker.NameForMethods(mm); intfName != "" {
+				jp.InterfacePkg = pkg.PkgPath
 				jp.InterfaceName = intfName
 			}
 			jt.Params = append(jt.Params, jp)
@@ -149,5 +156,6 @@ type jtuple struct {
 type jparam struct {
 	Name          string
 	Methods       []string `json:",omitempty"`
+	InterfacePkg  string   `json:",omitempty"`
 	InterfaceName string   `json:",omitempty"`
 }

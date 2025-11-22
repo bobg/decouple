@@ -7,6 +7,12 @@ import (
 	"os"
 )
 
+// This named type should never be suggested,
+// since it is superseded by an identical one in the stdlib.
+type JankyReader interface {
+	Read([]byte) (int, error)
+}
+
 // {"r": {"Read": "func([]byte) (int, error)"}}
 // {"r": "io.Reader"}
 func F1(r *os.File, n int) ([]byte, error) {
@@ -274,7 +280,6 @@ func F34(r *os.File, ch chan<- *os.File) ([]byte, error) {
 }
 
 // {"x": {"foo": "func()"}}
-// {"x": ""}
 func F35(x interface {
 	foo()
 	bar()

@@ -11,9 +11,9 @@ func (a *analyzer) debugf(format string, args ...any) {
 		return
 	}
 	s := fmt.Sprintf(format, args...)
-	strings.TrimRight(s, "\r\n")
+	s = strings.TrimRight(s, "\r\n")
 	if a.level > 0 {
-		fmt.Fprintf(os.Stderr, strings.Repeat("  ", a.level))
+		fmt.Fprint(os.Stderr, strings.Repeat("  ", a.level))
 	}
 	fmt.Fprintln(os.Stderr, s)
 }
