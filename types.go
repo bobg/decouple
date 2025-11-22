@@ -6,6 +6,8 @@ func getType[T types.Type](typ types.Type) T {
 	switch typ := typ.(type) {
 	case T:
 		return typ
+	case *types.Alias:
+		return getType[T](typ.Rhs())
 	case *types.Named:
 		return getType[T](typ.Underlying())
 	default:

@@ -38,7 +38,7 @@ func run(w io.Writer, verbose, doJSON bool, args []string) error {
 	case 1:
 		dir = args[0]
 	default:
-		return fmt.Errorf("Usage: %s [-v] [-json] [DIR]", os.Args[0])
+		return fmt.Errorf("usage: %s [-v] [-json] [DIR]", os.Args[0])
 	}
 
 	checker, err := decouple.NewCheckerFromDir(dir)
