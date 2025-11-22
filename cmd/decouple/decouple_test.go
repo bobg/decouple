@@ -34,7 +34,7 @@ func TestRunJSON(t *testing.T) {
 	want := []jtuple{{
 		PackageName: "main",
 		FileName:    "main.go",
-		Line:        105,
+		Line:        106,
 		Column:      6,
 		FuncName:    "showJSON",
 		Params: []jparam{{

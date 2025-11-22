@@ -94,7 +94,7 @@ func run(w io.Writer, verbose, doJSON bool, args []string) error {
 				continue
 			}
 
-			methods := maps.Keys(tuple.M[param])
+			methods := slices.Collect(maps.Keys(tuple.M[param]))
 			sort.Strings(methods)
 			fmt.Fprintf(w, "    %s: %v\n", param, methods)
 		}
@@ -122,7 +122,7 @@ func showJSON(w io.Writer, checker decouple.Checker, tuples []decouple.Tuple) er
 			}
 			jp := jparam{
 				Name:    param,
-				Methods: maps.Keys(mm),
+				Methods: slices.Collect(maps.Keys(mm)),
 			}
 			sort.Strings(jp.Methods)
 			if pkg, intfName := checker.NameForMethods(mm); intfName != "" {
