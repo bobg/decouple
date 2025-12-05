@@ -14,7 +14,7 @@ import (
 
 func TestRunJSON(t *testing.T) {
 	buf := new(bytes.Buffer)
-	if err := run(buf, false, true, []string{"../.."}); err != nil {
+	if err := run2(buf, false, true, false, []string{"../.."}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -34,7 +34,7 @@ func TestRunJSON(t *testing.T) {
 	want := []jtuple{{
 		PackageName: "main",
 		FileName:    "main.go",
-		Line:        106,
+		Line:        113,
 		Column:      6,
 		FuncName:    "showJSON",
 		Params: []jparam{{
@@ -52,7 +52,7 @@ func TestRunJSON(t *testing.T) {
 
 func TestRunPlain(t *testing.T) {
 	buf := new(bytes.Buffer)
-	if err := run(buf, false, false, []string{"../.."}); err != nil {
+	if err := run2(buf, false, false, false, []string{"../.."}); err != nil {
 		t.Fatal(err)
 	}
 

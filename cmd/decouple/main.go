@@ -17,21 +17,27 @@ import (
 )
 
 func main() {
-	var (
-		verbose bool
-		doJSON  bool
-	)
-	flag.BoolVar(&verbose, "v", false, "verbose")
-	flag.BoolVar(&doJSON, "json", false, "output in JSON format")
-	flag.Parse()
-
-	if err := run(os.Stdout, verbose, doJSON, flag.Args()); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(w io.Writer, verbose, doJSON bool, args []string) error {
+func run() error {
+	var (
+		deprecated bool
+		doJSON     bool
+		verbose    bool
+	)
+	flag.BoolVar(&deprecated, "deprecated", false, "include deprecated functions in the analysis")
+	flag.BoolVar(&doJSON, "json", false, "output in JSON format")
+	flag.BoolVar(&verbose, "v", false, "verbose")
+	flag.Parse()
+
+	return run2(os.Stdout, deprecated, doJSON, verbose, flag.Args())
+}
+
+func run2(w io.Writer, deprecated, doJSON, verbose bool, args []string) error {
 	var dir string
 	switch len(args) {
 	case 0:
@@ -46,6 +52,7 @@ func run(w io.Writer, verbose, doJSON bool, args []string) error {
 	if err != nil {
 		return errors.Wrapf(err, "creating checker for %s", dir)
 	}
+	checker.Deprecated = deprecated
 	checker.Verbose = verbose
 
 	tuples, err := checker.Check()
