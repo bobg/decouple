@@ -21,9 +21,11 @@ const PkgMode = packages.NeedName | packages.NeedFiles | packages.NeedImports | 
 // or a single such package,
 // or a function or function parameter in one.
 //
+// Set Deprecated to include deprecated functions in the analysis, which are normally excluded.
 // Set Verbose to true to get (very) verbose debugging output.
 type Checker struct {
-	Verbose bool
+	Deprecated bool
+	Verbose    bool
 
 	pkgs            []*packages.Package
 	namedInterfaces map[*packages.Package]map[string]namedInterfacePair // pkg -> named interface type -> (method map, is alias)
@@ -191,6 +193,10 @@ type MethodMap = map[string]*types.Signature
 // which should be one of the packages contained in the Checker.
 // The result is a map from parameter names eligible for decoupling to MethodMaps.
 func (ch Checker) CheckFunc(pkg *packages.Package, fndecl *ast.FuncDecl) (map[string]MethodMap, error) {
+	if !ch.Deprecated && isDeprecated(fndecl) {
+		return nil, nil
+	}
+
 	result := make(map[string]MethodMap)
 	for _, field := range fndecl.Type.Params.List {
 		for _, name := range field.Names {
@@ -208,6 +214,19 @@ func (ch Checker) CheckFunc(pkg *packages.Package, fndecl *ast.FuncDecl) (map[st
 		}
 	}
 	return result, nil
+}
+
+func isDeprecated(fndecl *ast.FuncDecl) bool {
+	if fndecl.Doc == nil {
+		return false
+	}
+	pars := strings.Split(fndecl.Doc.Text(), "\n\n")
+	for _, par := range pars {
+		if strings.HasPrefix(par, "Deprecated:") {
+			return true
+		}
+	}
+	return false
 }
 
 // CheckParam checks a single named parameter in a given function declaration,
