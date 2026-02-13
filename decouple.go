@@ -220,8 +220,8 @@ func isDeprecated(fndecl *ast.FuncDecl) bool {
 	if fndecl.Doc == nil {
 		return false
 	}
-	pars := strings.Split(fndecl.Doc.Text(), "\n\n")
-	for _, par := range pars {
+	pars := strings.SplitSeq(fndecl.Doc.Text(), "\n\n")
+	for par := range pars {
 		if strings.HasPrefix(par, "Deprecated:") {
 			return true
 		}
@@ -860,8 +860,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 							panic(errf("got %T, want *ast.Ident in key-value entry of struct-typed composite literal at %s", kv.Key, a.pos(kv)))
 						}
 
-						for j := 0; j < literalType.NumFields(); j++ {
-							field := literalType.Field(j)
+						for field := range literalType.Fields() {
 							if field.Name() == id.Name {
 								elemType = field.Type()
 								break
@@ -971,12 +970,7 @@ func (a *analyzer) expr(expr ast.Expr) (ok bool) {
 		if a.isObjOrNotExpr(expr.X) {
 			return false
 		}
-		for _, idx := range expr.Indices {
-			if a.isObjOrNotExpr(idx) {
-				return false
-			}
-		}
-		return true
+		return !slices.ContainsFunc(expr.Indices, a.isObjOrNotExpr)
 
 	case *ast.KeyValueExpr:
 		panic("did not expect to reach the KeyValueExpr clause")
