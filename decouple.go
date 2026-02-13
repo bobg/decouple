@@ -238,8 +238,7 @@ func (ch Checker) CheckParam(pkg *packages.Package, fndecl *ast.FuncDecl, name *
 	defer func() {
 		if r := recover(); r != nil {
 			if e, ok := r.(error); ok {
-				var d derr
-				if errors.As(e, &d) {
+				if d, ok := errors.AsType[derr](e); ok {
 					err = d
 					return
 				}
