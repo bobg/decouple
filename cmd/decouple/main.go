@@ -145,7 +145,7 @@ func showJSON(w io.Writer, checker decouple.Checker, tuples []decouple.Tuple) er
 			return jt.Params[i].Name < jt.Params[j].Name
 		})
 		if err := enc.Encode(jt); err != nil {
-			return err
+			return errors.Wrap(err, "encoding JSON output")
 		}
 	}
 
