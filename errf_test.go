@@ -8,8 +8,7 @@ import (
 func TestErrf(t *testing.T) {
 	got := errf("What's a %d?", 412)
 
-	var d derr
-	if !errors.As(got, &d) {
+	if _, ok := errors.AsType[derr](got); !ok {
 		t.Errorf("got %v, want derr", got)
 	}
 
